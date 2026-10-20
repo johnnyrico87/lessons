@@ -67,13 +67,13 @@ Each task cites the requirement (R§) and/or design (D§) it satisfies. Build or
 
 ## Phase 4 — Search (situation-first)  (R§4, D§4)
 
-- [ ] 4.1 Situation→node mapping: embed query (local sentence-transformer, R§10 embedding decision) → nearest `situation` node(s), **FTS keyword fallback** so it works before extraction is deep (R§4.2, D§4).
-- [ ] 4.2 Traverse `situation --addresses_situation--> lessons/experiences`; expand `contradicts/contrasts` neighbors to surface divergence (R§4.4, D§4).
-- [ ] 4.3 Rank by relevance × cross-source recurrence (durable conviction > offhand remark) (R§4.6).
-- [ ] 4.4 Result shape = pointers only: lesson/experience + leader + episode + quote + timestamp deep link; **no synthesized answer** (R§4.3, R§4.5).
-- [ ] 4.5 Tests: ranking + divergence surfacing on the fixture graph (D§9).
+- [x] 4.1 Situation→node mapping: embed query (local sentence-transformer, R§10 embedding decision) → nearest `situation` node(s), **keyword fallback** so it works before extraction is deep (R§4.2, D§4). _Embedder is an optional protocol; the no-model keyword-overlap fallback is the default and is what's tested. Wiring a real sentence-transformer is the R§10 embedding decision._
+- [x] 4.2 Traverse `situation --addresses_situation--> lessons/experiences`; expand `contradicts/contrasts` neighbors to surface divergence (R§4.4, D§4).
+- [x] 4.3 Rank by relevance × cross-source recurrence (durable conviction > offhand remark) (R§4.6).
+- [x] 4.4 Result shape = pointers only: lesson/experience + leader + episode + quote + timestamp deep link; **no synthesized answer** (R§4.3, R§4.5).
+- [x] 4.5 Tests: ranking + divergence surfacing on the fixture graph (D§9).
 
-**Exit check:** a free-text situation query returns cited pointer results including at least one divergent pair, with zero synthesized advice text.
+**Exit check:** a free-text situation query returns cited pointer results including at least one divergent pair, with zero synthesized advice text. _Met (7 search tests)._
 
 ---
 
