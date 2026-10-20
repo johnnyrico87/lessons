@@ -22,11 +22,11 @@ Each task cites the requirement (R§) and/or design (D§) it satisfies. Build or
 
 ## Phase 1 — Store (SQLite graph + DAL)  (R§8.2, D§3)
 
-- [ ] 1.1 Implement schema/migrations: `channels, videos, transcripts, nodes, edges, mentions, bios, extract_runs`, and `transcripts_fts` (D§3).
-- [ ] 1.2 Build the read/write DAL with the **provenance invariant enforced**: a `nodes` row with `origin='podcast'` must have ≥1 `mentions`; a `person` with a bio must carry a non-null `license` (D§3, R§8.2).
-- [ ] 1.3 Implement the **structured citation assembler** in the DAL — `PodcastCitation` (channel, episode, video_url, timestamp, deep_link, host, leaders[]) and `ExternalCitation` (source, url, license); `host` and `leaders` are separate fields (R§4a, D§7a).
-- [ ] 1.4 DAL refuses to emit a podcast unit without a resolvable citation (R§4a.5).
-- [ ] 1.5 Unit tests against the fixture: schema invariants, citation assembly, uncitable-node rejection (D§9).
+- [x] 1.1 Implement schema/migrations: `channels, videos, transcripts, nodes, edges, mentions, bios, extract_runs`, and `transcripts_fts` (D§3).
+- [x] 1.2 Build the read/write DAL with the **provenance invariant enforced**: a `nodes` row with `origin='podcast'` must have ≥1 `mentions`; a `person` with a bio must carry a non-null `license` (D§3, R§8.2).
+- [x] 1.3 Implement the **structured citation assembler** in the DAL — `PodcastCitation` (channel, episode, video_url, timestamp, deep_link, host, leaders[]) and `ExternalCitation` (source, url, license); `host` and `leaders` are separate fields (R§4a, D§7a).
+- [x] 1.4 DAL refuses to emit a podcast unit without a resolvable citation (R§4a.5).
+- [x] 1.5 Unit tests against the fixture: schema invariants, citation assembly, uncitable-node rejection (D§9).
 
 **Exit check:** store tests pass with no network; inserting a citationless podcast node is rejected.
 
