@@ -36,7 +36,7 @@ Each task cites the requirement (R§) and/or design (D§) it satisfies. Build or
 
 - [x] 2.1 Channel enumeration via `yt-dlp` `/videos` playlist → `channels` + `videos` rows (id, title, date, duration, url) (R§1.1, D§6).
 - [x] 2.2 Transcript fetch via `youtube-transcript-api` with per-line timestamps → `transcripts` (`source='captions'`) + file under `data/transcripts/` (R§1.2, R§1.4).
-- [~] 2.3 Whisper fallback: no captions → `yt-dlp` audio → `faster-whisper` → `transcripts` (`source='whisper'`) (R§1.3). _Seam + orchestration done and tested; the audio-download→whisper transcription body is stubbed (`NotImplementedError`) for Phase 2 hardening — captions cover the v1 thin slice._
+- [x] 2.3 Whisper fallback: no captions → `yt-dlp` audio → `faster-whisper` → `transcripts` (`source='whisper'`) (R§1.3). _Done: `whisper_transcribe` downloads bestaudio to a temp file, transcribes with faster-whisper into timestamped segments, and cleans up the audio. Tested with mocked yt-dlp + model (no network/audio). Remaining follow-up: persist per-line timestamps into the store so extract chunks on real times (currently captions/whisper lines are produced but the store keeps only the joined text)._
 - [x] 2.4 Resumability: skip already-ingested video ids via `videos.ingested_at` (R§1.5, R§7.2).
 - [x] 2.5 De-dup across channels by video id, then normalized title + duration bucket — handles the likely Senra/Founders overlap (R§1.6).
 - [x] 2.6 Rate-limit handling: exponential backoff + jitter (R§1.7). _Concurrency cap deferred — ingest is currently sequential._
