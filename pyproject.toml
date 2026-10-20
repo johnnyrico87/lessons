@@ -35,8 +35,8 @@ dev = ["pytest>=8.0", "ruff>=0.5"]
 lessons = "lessons.cli:app"
 
 [project.urls]
-Homepage = "https://github.com/OWNER/lessons"
-Repository = "https://github.com/OWNER/lessons"
+Homepage = "https://github.com/johnnyrico87/lessons"
+Repository = "https://github.com/johnnyrico87/lessons"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/lessons"]

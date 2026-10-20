@@ -26,7 +26,7 @@ Each pass is its own command and is independently resumable. Transcripts on disk
 Requires **Python 3.11+**.
 
 ```
-git clone https://github.com/OWNER/lessons
+git clone https://github.com/johnnyrico87/lessons
 cd lessons
 python -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev]"
