@@ -47,12 +47,6 @@ def _db_path() -> Path:
     return d / "lessons.db"
 
 
-def _todo(command: str, phase: str) -> None:
-    """Stub reporter — honest placeholder until the phase lands."""
-    typer.echo(f"`lessons {command}` is not implemented yet (scaffold). Built in {phase}.")
-    raise typer.Exit(code=0)
-
-
 @app.command()
 def version() -> None:
     """Print the installed version."""
@@ -124,9 +118,25 @@ def extract(
 
 
 @app.command()
-def enrich() -> None:
+def enrich(
+    refresh: bool = typer.Option(
+        False, "--refresh", help="Re-fetch bios even if a person already has one."
+    ),
+) -> None:
     """Pass B2 (optional) — attach external biographies to person nodes."""
-    _todo("enrich", "Phase 7")
+    from lessons.enrich import Enricher
+    from lessons.providers import WikipediaBioProvider
+    from lessons.store import Store
+
+    store = Store(_db_path())
+    try:
+        r = Enricher(store, WikipediaBioProvider(), refresh=refresh).enrich()
+        typer.echo(
+            f"enriched {r.enriched} of {r.people_total} person node(s); "
+            f"skipped {r.skipped_existing} already-enriched, {r.not_found} not found."
+        )
+    finally:
+        store.close()
 
 
 @app.command()

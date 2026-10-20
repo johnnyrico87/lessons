@@ -202,3 +202,42 @@ def test_reingest_replaces_lines(store):
         "SAMPLE0001", "b", "captions", lines=[{"start_s": 2, "text": "b"}]
     )
     assert store.lines_for("SAMPLE0001") == [{"start_s": 2, "text": "b"}]
+
+
+# --- bio image fields + schema upgrade -------------------------------------
+
+def test_bio_image_fields_round_trip(store):
+    person = store.add_external_node("person", "Carnegie")
+    store.add_bio(
+        person, "Wikipedia", "https://en.wikipedia.org/wiki/Andrew_Carnegie",
+        "CC BY-SA 4.0", summary="Steel.", image_url="https://img/c.jpg",
+        image_license="see Commons",
+    )
+    bio = store.bio_for(person)
+    assert bio["image_url"] == "https://img/c.jpg"
+    assert bio["image_license"] == "see Commons"
+
+
+def test_add_bio_is_idempotent_per_person(store):
+    person = store.add_external_node("person", "X")
+    store.add_bio(person, "Wikipedia", "u1", "CC BY-SA 4.0", summary="first")
+    store.add_bio(person, "Wikipedia", "u2", "CC BY-SA 4.0", summary="second")
+    assert store.count("bios") == 1
+    assert store.bio_for(person)["summary"] == "second"
+
+
+def test_old_bios_table_gains_image_columns(tmp_path):
+    import sqlite3
+    p = tmp_path / "old.db"
+    c = sqlite3.connect(p)
+    # a pre-v3 bios table with no image columns
+    c.execute(
+        "CREATE TABLE bios(id TEXT PRIMARY KEY, person_node_id TEXT, source TEXT, "
+        "source_url TEXT, license TEXT, title TEXT, summary TEXT, fetched_at TEXT)"
+    )
+    c.commit()
+    c.close()
+    s = Store(p)  # _migrate should ALTER in image_url / image_license
+    cols = {r[1] for r in s.conn.execute("PRAGMA table_info(bios)").fetchall()}
+    assert "image_url" in cols and "image_license" in cols
+    s.close()

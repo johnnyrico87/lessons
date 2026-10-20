@@ -131,3 +131,38 @@ def test_manifest_served(client):
     r = client.get("/manifest.webmanifest")
     assert r.status_code == 200
     assert r.json()["display"] == "standalone"
+
+
+# --- enrichment surfaces (Phase 7) ----------------------------------------
+
+def test_node_detail_includes_external_bio_badged(client):
+    s = client._store
+    pid = s.add_podcast_node(
+        "person", "Rockefeller", mentions=[Mention("v1", 100, "Rockefeller...")]
+    )
+    s.add_bio(
+        pid, "Wikipedia", "https://en.wikipedia.org/wiki/John_D._Rockefeller",
+        "CC BY-SA 4.0", title="John D. Rockefeller", summary="Industrialist.",
+        image_url="https://img/r.jpg", image_license="see Wikimedia Commons",
+    )
+    data = client.get(f"/api/node/{pid}").json()
+    assert data["origin"] == "podcast"          # the person node itself
+    assert data["bio"]["origin"] == "external"  # bio clearly badged external
+    assert data["bio"]["license"] == "CC BY-SA 4.0"
+    assert data["bio"]["image_url"] == "https://img/r.jpg"
+    # podcast citations and the external bio are separate keys, never merged
+    assert "citations" in data and "bio" in data
+
+
+def test_splash_includes_avatar_when_enriched(client):
+    s = client._store
+    pid = s.add_podcast_node(
+        "person", "Carnegie", mentions=[Mention("v1", 50, "Carnegie built steel.")]
+    )
+    s.add_bio(
+        pid, "Wikipedia", "https://en.wikipedia.org/wiki/Andrew_Carnegie",
+        "CC BY-SA 4.0", image_url="https://img/c.jpg", image_license="see Commons",
+    )
+    data = client.get("/api/splash").json()
+    carnegie = next(e for e in data["elements"] if e["label"] == "Carnegie")
+    assert carnegie["image_url"] == "https://img/c.jpg"

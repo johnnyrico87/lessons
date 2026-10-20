@@ -210,3 +210,54 @@ class OllamaClient:
             options={"temperature": 0},
         )
         return resp["message"]["content"]
+
+
+class WikipediaBioProvider:
+    """Fetches a short bio from the Wikipedia REST summary API, plus the lead
+    image (Wikipedia/Wikimedia Commons). Lazy-imports httpx.
+
+    Prose is CC BY-SA (Wikipedia's license); the lead image carries its own
+    license on Commons, which we record separately. Only clearly-licensed
+    content is returned; anything ambiguous is dropped by the caller.
+    """
+
+    SUMMARY_URL = "https://en.wikipedia.org/api/rest_v1/page/summary/{title}"
+
+    def __init__(self, user_agent: str = "lessons/0.0 (https://github.com/johnnyrico87/lessons)"):
+        self.user_agent = user_agent
+
+    def fetch_bio(self, person_label: str):
+        from lessons.enrich import Bio
+
+        try:
+            import httpx  # type: ignore
+        except ImportError as e:
+            raise RuntimeError("httpx not installed; pip install -e '.[dev]'") from e
+
+        title = person_label.strip().replace(" ", "_")
+        url = self.SUMMARY_URL.format(title=title)
+        try:
+            resp = httpx.get(
+                url, headers={"User-Agent": self.user_agent}, timeout=15, follow_redirects=True
+            )
+        except Exception:
+            return None
+        if resp.status_code != 200:
+            return None
+        data = resp.json()
+        if data.get("type") == "disambiguation" or not data.get("extract"):
+            return None
+
+        image_url = (data.get("thumbnail") or {}).get("source")
+        return Bio(
+            source="Wikipedia",
+            source_url=(data.get("content_urls", {}).get("desktop", {}) or {}).get("page")
+            or f"https://en.wikipedia.org/wiki/{title}",
+            license="CC BY-SA 4.0",
+            title=data.get("title"),
+            summary=data.get("extract"),
+            image_url=image_url,
+            # Commons lead images are typically CC/PD but vary per file; record
+            # provenance and let the UI link out rather than assert a license.
+            image_license="see Wikimedia Commons" if image_url else None,
+        )

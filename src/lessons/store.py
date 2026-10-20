@@ -70,11 +70,25 @@ class Store:
     # --- schema -----------------------------------------------------------
     def _apply_schema(self) -> None:
         self.conn.executescript(SCHEMA_SQL)
+        self._migrate()
         self.conn.execute(
             "INSERT OR REPLACE INTO meta(key, value) VALUES ('schema_version', ?)",
             (str(SCHEMA_VERSION),),
         )
         self.conn.commit()
+
+    def _migrate(self) -> None:
+        """Idempotent column additions for DBs created at an older schema.
+        `CREATE TABLE IF NOT EXISTS` handles fresh DBs; these ALTERs catch
+        existing ones. Adding a column that already exists is swallowed."""
+        for table, col, decl in [
+            ("bios", "image_url", "TEXT"),
+            ("bios", "image_license", "TEXT"),
+        ]:
+            try:
+                self.conn.execute(f"ALTER TABLE {table} ADD COLUMN {col} {decl}")
+            except sqlite3.OperationalError:
+                pass  # column already present
 
     # --- channels / videos / transcripts ----------------------------------
     def add_channel(self, id: str, handle: str, url: str, name: str) -> str:
@@ -247,19 +261,34 @@ class Store:
         license: str,
         title: str | None = None,
         summary: str | None = None,
+        image_url: str | None = None,
+        image_license: str | None = None,
         fetched_at: str | None = None,
     ) -> str:
         if not license:
             raise ValueError("a bio requires a non-null license (invariant)")
+        # Idempotent per person: replace any existing bio so re-enrich updates.
+        self.conn.execute("DELETE FROM bios WHERE person_node_id=?", (person_node_id,))
         bio_id = _id()
         self.conn.execute(
             "INSERT INTO bios"
-            "(id, person_node_id, source, source_url, license, title, summary, fetched_at) "
-            "VALUES (?,?,?,?,?,?,?,?)",
-            (bio_id, person_node_id, source, source_url, license, title, summary, fetched_at),
+            "(id, person_node_id, source, source_url, license, title, summary, "
+            "image_url, image_license, fetched_at) "
+            "VALUES (?,?,?,?,?,?,?,?,?,?)",
+            (bio_id, person_node_id, source, source_url, license, title, summary,
+             image_url, image_license, fetched_at),
         )
         self.conn.commit()
         return bio_id
+
+    def bio_for(self, person_node_id: str) -> dict | None:
+        """Full bio row (incl. summary + image) for the About panel."""
+        row = self.conn.execute(
+            "SELECT source, source_url, license, title, summary, image_url, image_license "
+            "FROM bios WHERE person_node_id=? LIMIT 1",
+            (person_node_id,),
+        ).fetchone()
+        return dict(row) if row else None
 
     # --- citation assembly (read) -----------------------------------------
     def cite_node(self, node_id: str) -> list[PodcastCitation]:
