@@ -189,3 +189,34 @@ def test_manifest_lists_icons_and_maskable(client):
     srcs = [i["src"] for i in data["icons"]]
     assert "/static/icon-512.png" in srcs
     assert any("maskable" in i.get("purpose", "") for i in data["icons"])
+
+
+# --- graph explorer (Cytoscape) --------------------------------------------
+
+def test_graph_api_returns_cytoscape_elements(client):
+    ids = client._ids
+    data = client.get("/api/graph").json()
+    els = data["elements"]
+    node_els = [e for e in els if "id" in e["data"]]
+    edge_els = [e for e in els if "source" in e["data"]]
+    # 3 nodes (situation + 2 principles), 3 edges incl. the contradicts tension
+    assert len(node_els) == 3
+    assert any(e["data"].get("tension") for e in edge_els)
+    # nodes carry their type for coloring
+    assert all("ntype" in e["data"] for e in node_els)
+    assert ids  # fixture ids exist
+
+
+def test_graph_api_filters_by_type(client):
+    data = client.get("/api/graph", params={"node_type": "situation"}).json()
+    node_els = [e for e in data["elements"] if "id" in e["data"]]
+    assert len(node_els) == 1
+    assert node_els[0]["data"]["ntype"] == "situation"
+    # edges to excluded nodes are dropped
+    assert all("source" not in e["data"] for e in data["elements"])
+
+
+def test_graph_page_served(client):
+    r = client.get("/graph")
+    assert r.status_code == 200
+    assert "cytoscape" in r.text.lower()
