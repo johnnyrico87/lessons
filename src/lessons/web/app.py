@@ -163,6 +163,19 @@ def build_app(store: Store) -> FastAPI:
                 }
         return out
 
+    @app.get("/api/node/{node_id}/full")
+    def api_node_full(node_id: str) -> dict:
+        """Everything for the leader detail card in one call:
+        the base node detail (summary, citations, bio) PLUS the concept facts
+        (lessons/principles/experiences/situations tied to this leader) and the
+        connected leaders (other person nodes, direct + shared-experience)."""
+        base = api_node(node_id)  # reuse the detail assembly (also 404s)
+        base["facts"] = store.node_facts(node_id)
+        base["connections"] = (
+            store.leader_connections(node_id) if base["type"] == "person" else []
+        )
+        return base
+
     # --- static UI --------------------------------------------------------
     if STATIC_DIR.exists():
         @app.get("/")
