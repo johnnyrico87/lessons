@@ -75,7 +75,11 @@ class RealYouTubeProvider:
 
     def fetch_transcript(self, video: VideoMeta) -> TranscriptResult | None:
         """Return captions, or None when the video has none (caller falls back
-        to whisper). Raises TransientIngestError on rate-limit/network blips."""
+        to whisper). Raises TransientIngestError on rate-limit/network blips.
+
+        Uses youtube-transcript-api >= 1.0 (instance ``fetch``). The snippets are
+        objects with ``.start`` / ``.text``.
+        """
         try:
             from youtube_transcript_api import (  # type: ignore
                 YouTubeTranscriptApi,
@@ -83,6 +87,7 @@ class RealYouTubeProvider:
             from youtube_transcript_api._errors import (  # type: ignore
                 NoTranscriptFound,
                 TranscriptsDisabled,
+                VideoUnavailable,
             )
         except ImportError as e:
             raise RuntimeError(
@@ -90,14 +95,16 @@ class RealYouTubeProvider:
             ) from e
 
         try:
-            segs = YouTubeTranscriptApi.get_transcript(video.id)
-        except (NoTranscriptFound, TranscriptsDisabled):
-            return None
-        except Exception as e:  # network/rate-limit → retryable
+            fetched = YouTubeTranscriptApi().fetch(video.id)
+        except (NoTranscriptFound, TranscriptsDisabled, VideoUnavailable):
+            return None  # no captions → caller falls back to whisper
+        except Exception as e:  # network/rate-limit/blocked → retryable
             raise TransientIngestError(str(e)) from e
 
-        lines = [{"start_s": int(s["start"]), "text": s["text"]} for s in segs]
-        text = "\n".join(s["text"] for s in segs)
+        lines = [{"start_s": int(s.start), "text": s.text} for s in fetched]
+        text = "\n".join(s.text for s in fetched)
+        if not lines:
+            return None
         return TranscriptResult(text=text, source="captions", lines=lines)
 
     def whisper_transcribe(self, video: VideoMeta) -> TranscriptResult:
