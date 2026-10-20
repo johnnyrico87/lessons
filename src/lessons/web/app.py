@@ -52,6 +52,45 @@ def build_app(store: Store) -> FastAPI:
     def api_search(q: str = Query(..., min_length=1), limit: int = 10) -> dict:
         return search.search(q, limit=limit).to_dict()
 
+    @app.get("/api/graph")
+    def api_graph(
+        node_type: str = Query("", description="Filter to one node type."),
+        limit: int = 500,
+    ) -> dict:
+        """Nodes + edges in Cytoscape elements format, for the graph explorer.
+
+        Each node carries its type (for color/filter) and whether it has a bio.
+        Edges carry their relation (for edge styling, incl. tension coloring).
+        """
+        where = "WHERE type=?" if node_type else ""
+        params: tuple = (node_type, limit) if node_type else (limit,)
+        node_rows = store.conn.execute(
+            f"SELECT id, type, label FROM nodes {where} LIMIT ?", params
+        ).fetchall()
+        ids = {r["id"] for r in node_rows}
+        elements = []
+        for r in node_rows:
+            elements.append(
+                {"data": {"id": r["id"], "label": r["label"], "ntype": r["type"]}}
+            )
+        # edges only between included nodes
+        for e in store.conn.execute(
+            "SELECT src_node_id, dst_node_id, relation FROM edges"
+        ).fetchall():
+            if e["src_node_id"] in ids and e["dst_node_id"] in ids:
+                tension = e["relation"] in ("contradicts", "contrasts")
+                elements.append(
+                    {
+                        "data": {
+                            "source": e["src_node_id"],
+                            "target": e["dst_node_id"],
+                            "relation": e["relation"],
+                            "tension": tension,
+                        }
+                    }
+                )
+        return {"elements": elements, "count": len(node_rows)}
+
     @app.get("/api/fts")
     def api_fts(q: str = Query(..., min_length=1), limit: int = 20) -> dict:
         rows = store.fts_search(q, limit=limit)
@@ -129,6 +168,10 @@ def build_app(store: Store) -> FastAPI:
         @app.get("/")
         def index() -> FileResponse:
             return FileResponse(STATIC_DIR / "index.html")
+
+        @app.get("/graph")
+        def graph_page() -> FileResponse:
+            return FileResponse(STATIC_DIR / "graph.html")
 
         @app.get("/manifest.webmanifest")
         def manifest() -> FileResponse:

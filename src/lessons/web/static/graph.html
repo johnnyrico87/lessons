@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>lessons — graph explorer</title>
+  <meta name="theme-color" content="#0f1115" />
+  <link rel="stylesheet" href="/static/styles.css" />
+  <script src="https://unpkg.com/cytoscape@3.30.2/dist/cytoscape.min.js"></script>
+  <style>
+    .graph-wrap { display:flex; height:calc(100vh - 52px); }
+    #cy { flex:1; background:var(--surface); }
+    .side {
+      width:320px; border-left:1px solid var(--hairline);
+      padding:18px; overflow-y:auto; background:var(--surface);
+    }
+    .filters { display:flex; gap:6px; flex-wrap:wrap; padding:12px 18px; border-bottom:1px solid var(--hairline); }
+    .filters button {
+      font:inherit; font-size:12px; padding:5px 10px; border-radius:999px;
+      border:1px solid var(--hairline); background:transparent; color:var(--text-dim); cursor:pointer;
+    }
+    .filters button.active { border-color:var(--accent); color:var(--accent); }
+    .detail-quote { color:var(--quote); font-size:15px; line-height:1.5; margin:8px 0; }
+    .detail-cite { font-size:12px; color:var(--text-dim); padding-top:8px; border-top:1px solid var(--hairline); }
+    .detail-cite a { color:var(--accent); text-decoration:none; }
+  </style>
+</head>
+<body>
+  <header class="topbar">
+    <span class="wordmark">lessons</span>
+    <nav class="get-app">
+      <a class="btn btn-ghost" href="/">← Search</a>
+    </nav>
+  </header>
+  <div class="filters" id="filters"></div>
+  <div class="graph-wrap">
+    <div id="cy"></div>
+    <aside class="side" id="side">
+      <p style="color:var(--text-dim);font-size:13px;">Click a node to see its sourced quotes. Edge color: blue = relation, amber = tension (contradicts/contrasts).</p>
+    </aside>
+  </div>
+
+  <script>
+  const TYPES = ["all","person","company","lesson","principle","experience","situation","era"];
+  const TYPE_COLOR = {
+    person:"#7aa2f7", company:"#9ece6a", lesson:"#e0af68", principle:"#bb9af7",
+    experience:"#7dcfff", situation:"#f7768e", era:"#9aa3b2"
+  };
+  let cy, activeType = "all";
+
+  function styleSheet() {
+    return [
+      { selector:"node", style:{
+        "background-color": (n)=>TYPE_COLOR[n.data("ntype")]||"#9aa3b2",
+        "label":"data(label)", "color":"#e7e9ee", "font-size":"10px",
+        "text-valign":"bottom","text-margin-y":"4px","width":28,"height":28,
+        "text-max-width":"90px","text-wrap":"ellipsis"
+      }},
+      { selector:"edge", style:{
+        "width":1.5, "line-color":"#7aa2f7", "target-arrow-color":"#7aa2f7",
+        "target-arrow-shape":"triangle","curve-style":"bezier",
+        "label":"data(relation)","font-size":"8px","color":"#9aa3b2","text-rotation":"autorotate"
+      }},
+      { selector:'edge[?tension]', style:{ "line-color":"#e0a458","target-arrow-color":"#e0a458" }},
+      { selector:"node:selected", style:{ "border-width":3,"border-color":"#e7e9ee" }}
+    ];
+  }
+
+  async function loadGraph(type) {
+    const url = type && type!=="all" ? `/api/graph?node_type=${type}` : "/api/graph";
+    const data = await (await fetch(url)).json();
+    cy = cytoscape({
+      container: document.getElementById("cy"),
+      elements: data.elements,
+      style: styleSheet(),
+      layout: { name:"cose", animate:false, padding:30 }
+    });
+    cy.on("tap","node", (e)=>showNode(e.target.id()));
+  }
+
+  async function showNode(id) {
+    const side = document.getElementById("side");
+    const d = await (await fetch(`/api/node/${id}`)).json();
+    let html = `<div style="font-size:12px;color:var(--text-dim)">${d.ntype||d.type}</div>`+
+               `<h3 style="margin:4px 0 2px;">${esc(d.label)}</h3>`;
+    if (d.summary) html += `<p style="color:var(--text-dim);font-size:13px;">${esc(d.summary)}</p>`;
+    (d.citations||[]).forEach(c=>{
+      html += `<div class="detail-quote">“see source”</div>`+
+        `<div class="detail-cite"><a href="${c.deep_link}" target="_blank" rel="noopener">${c.label||"source"}</a> · ${esc(c.host||"")}${c.episode_title? " — "+esc(c.episode_title):""}</div>`;
+    });
+    if (d.bio) {
+      html += `<div style="margin-top:14px;padding-top:10px;border-top:1px solid var(--hairline);">`+
+        `<div style="font-size:11px;color:var(--tension);border:1px solid var(--tension);display:inline-block;padding:1px 7px;border-radius:999px;">About · external</div>`+
+        (d.bio.summary?`<p style="font-size:13px;color:var(--text-dim);margin:8px 0;">${esc(d.bio.summary)}</p>`:"")+
+        `<div class="detail-cite"><a href="${d.bio.source_url}" target="_blank" rel="noopener">${esc(d.bio.source)} · ${esc(d.bio.license)}</a></div></div>`;
+    }
+    side.innerHTML = html;
+  }
+
+  function esc(s){return String(s||"").replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[m]));}
+
+  function buildFilters(){
+    const bar = document.getElementById("filters");
+    TYPES.forEach(t=>{
+      const b=document.createElement("button");
+      b.textContent=t; if(t==="all") b.className="active";
+      b.onclick=()=>{ activeType=t; document.querySelectorAll(".filters button").forEach(x=>x.classList.remove("active")); b.classList.add("active"); loadGraph(t); };
+      bar.appendChild(b);
+    });
+  }
+
+  buildFilters();
+  loadGraph("all");
+  </script>
+</body>
+</html>
