@@ -166,3 +166,26 @@ def test_splash_includes_avatar_when_enriched(client):
     data = client.get("/api/splash").json()
     carnegie = next(e for e in data["elements"] if e["label"] == "Carnegie")
     assert carnegie["image_url"] == "https://img/c.jpg"
+
+
+# --- PWA assets (Phase 6) --------------------------------------------------
+
+def test_service_worker_served_from_root(client):
+    r = client.get("/sw.js")
+    assert r.status_code == 200
+    assert "application/javascript" in r.headers["content-type"]
+    assert "serviceWorker".lower() in r.text.lower() or "caches" in r.text
+
+
+def test_icons_served(client):
+    for path in ("/static/icon-192.png", "/static/icon-512.png"):
+        r = client.get(path)
+        assert r.status_code == 200
+        assert r.content[:8] == b"\x89PNG\r\n\x1a\n"  # real PNG signature
+
+
+def test_manifest_lists_icons_and_maskable(client):
+    data = client.get("/manifest.webmanifest").json()
+    srcs = [i["src"] for i in data["icons"]]
+    assert "/static/icon-512.png" in srcs
+    assert any("maskable" in i.get("purpose", "") for i in data["icons"])

@@ -165,3 +165,12 @@ $("#back-btn").addEventListener("click", () => {
 
 loadSplash();
 setupInstallFallback();
+
+// Register the service worker for offline app-shell + cached data (Phase 6).
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("/sw.js").catch(() => {
+      /* SW is an enhancement; the app works without it */
+    });
+  });
+}

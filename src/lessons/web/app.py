@@ -136,6 +136,11 @@ def build_app(store: Store) -> FastAPI:
                 STATIC_DIR / "manifest.webmanifest", media_type="application/manifest+json"
             )
 
+        @app.get("/sw.js")
+        def service_worker() -> FileResponse:
+            # Served from the app root so its scope covers the whole origin.
+            return FileResponse(STATIC_DIR / "sw.js", media_type="application/javascript")
+
         app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
     return app
