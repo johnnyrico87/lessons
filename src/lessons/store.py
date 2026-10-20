@@ -46,7 +46,10 @@ class Store:
 
     def __init__(self, db_path: str | Path):
         self.db_path = str(db_path)
-        self.conn = sqlite3.connect(self.db_path)
+        # check_same_thread=False: the read-mostly web app serves requests from a
+        # threadpool. Access is effectively serialized (one process, short txns),
+        # so sharing the connection across threads is safe here.
+        self.conn = sqlite3.connect(self.db_path, check_same_thread=False)
         self.conn.row_factory = sqlite3.Row
         self.conn.execute("PRAGMA foreign_keys = ON;")
         self._apply_schema()

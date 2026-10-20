@@ -33,11 +33,10 @@ def test_version_command():
 
 
 def test_pass_stubs_report_not_implemented():
-    # ingest + extract are implemented; enrich/serve remain stubs.
-    for cmd in ("enrich", "serve"):
-        result = runner.invoke(app, [cmd])
-        assert result.exit_code == 0
-        assert "not implemented yet" in result.output
+    # ingest + extract + serve are implemented; only enrich remains a stub.
+    result = runner.invoke(app, ["enrich"])
+    assert result.exit_code == 0
+    assert "not implemented yet" in result.output
 
 
 def test_fixture_is_wellformed():

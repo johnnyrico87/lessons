@@ -1,0 +1,208 @@
+/* lessons — results-page quality bar (requirements §4c, design §7c).
+   Theme tokens only; every surface sets background + text together so it
+   survives light and dark. Hairline dividers, pull-quote cards, generous
+   consistent spacing. */
+
+:root {
+  --bg: #0f1115;
+  --surface: #171a21;
+  --surface-2: #1e222b;
+  --text: #e7e9ee;
+  --text-dim: #9aa3b2;
+  --hairline: #2a2f3a;
+  --accent: #7aa2f7;
+  --accent-contrast: #0f1115;
+  --quote: #f2f4f8;
+  --tension: #e0a458;
+  --space: 20px;
+  --radius: 14px;
+  --maxw: 720px;
+}
+
+@media (prefers-color-scheme: light) {
+  :root {
+    --bg: #f7f8fa;
+    --surface: #ffffff;
+    --surface-2: #f0f2f6;
+    --text: #1a1d23;
+    --text-dim: #5b6472;
+    --hairline: #e2e6ec;
+    --accent: #3b5bdb;
+    --accent-contrast: #ffffff;
+    --quote: #11141a;
+    --tension: #b4690e;
+  }
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 16px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+}
+
+/* --- top bar --- */
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 20px;
+  border-bottom: 1px solid var(--hairline);
+}
+.wordmark { font-weight: 600; letter-spacing: 0.02em; color: var(--text); }
+.get-app { display: flex; align-items: center; gap: 10px; }
+.install-hint { color: var(--text-dim); font-size: 13px; max-width: 260px; }
+
+/* --- buttons --- */
+.btn {
+  font: inherit;
+  border-radius: 10px;
+  padding: 8px 14px;
+  cursor: pointer;
+  border: 1px solid var(--hairline);
+  background: var(--surface);
+  color: var(--text);
+  text-decoration: none;
+  transition: border-color .15s ease, background .15s ease;
+}
+.btn:hover { border-color: var(--accent); }
+.btn-ghost { background: transparent; }
+.btn-primary {
+  background: var(--accent);
+  color: var(--accent-contrast);
+  border-color: var(--accent);
+  font-weight: 600;
+  padding: 0 18px;
+}
+
+/* --- splash --- */
+.splash {
+  position: relative;
+  min-height: calc(100vh - 52px);
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+}
+.hero {
+  position: relative;
+  z-index: 2;
+  width: min(92vw, var(--maxw));
+  text-align: center;
+  padding: 24px;
+}
+.hero-title {
+  font-size: clamp(22px, 3.2vw, 34px);
+  line-height: 1.25;
+  font-weight: 650;
+  color: var(--text);
+  margin: 0 0 24px;
+}
+.search-form {
+  display: flex;
+  gap: 10px;
+  background: var(--surface);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius);
+  padding: 8px;
+  box-shadow: 0 8px 30px rgba(0,0,0,0.18);
+}
+.search-input {
+  flex: 1;
+  font: inherit;
+  background: transparent;
+  color: var(--text);
+  border: none;
+  outline: none;
+  padding: 10px 12px;
+}
+.search-input::placeholder { color: var(--text-dim); }
+.hero-sub { color: var(--text-dim); font-size: 14px; margin-top: 16px; }
+
+/* --- floating leaders (ambient, never over the hero) --- */
+.float-layer { position: absolute; inset: 0; z-index: 1; pointer-events: none; }
+.chip {
+  position: absolute;
+  background: var(--surface-2);
+  color: var(--text-dim);
+  border: 1px solid var(--hairline);
+  border-radius: 999px;
+  padding: 6px 12px;
+  font-size: 13px;
+  opacity: 0.55;
+  white-space: nowrap;
+  animation: drift 18s ease-in-out infinite alternate;
+}
+.chip .chip-quote { color: var(--text-dim); font-style: italic; }
+@keyframes drift {
+  from { transform: translateY(-6px); }
+  to   { transform: translateY(6px); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .chip { animation: none; }
+}
+
+/* --- results --- */
+.results { width: min(92vw, var(--maxw)); margin: 0 auto; padding: 24px 0 64px; }
+.results-head {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+.results-meta { color: var(--text-dim); font-size: 14px; margin: 0; }
+.results-list { display: flex; flex-direction: column; gap: 16px; }
+
+/* card — padding, hierarchy, quote as centerpiece, citation as quiet line */
+.card {
+  background: var(--surface);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius);
+  padding: 22px 24px;
+}
+.card-leader { color: var(--text-dim); font-size: 13px; letter-spacing: .02em; }
+.card-quote {
+  color: var(--quote);
+  font-size: 19px;
+  line-height: 1.45;
+  margin: 10px 0 14px;
+  font-weight: 500;
+}
+.card-quote::before { content: "\201C"; color: var(--text-dim); }
+.card-quote::after  { content: "\201D"; color: var(--text-dim); }
+.card-cite {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding-top: 12px;
+  border-top: 1px solid var(--hairline);
+  font-size: 13px;
+}
+.card-cite a { color: var(--accent); text-decoration: none; }
+.card-cite a:hover { text-decoration: underline; }
+.cite-host { color: var(--text-dim); }
+.badge {
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--hairline);
+  color: var(--text-dim);
+}
+.badge-external { border-color: var(--tension); color: var(--tension); }
+
+/* divergence: pair contrasting cards visibly (§4c.5) */
+.diverge-band {
+  border-left: 2px solid var(--tension);
+  padding-left: 14px;
+  margin: 4px 0 0;
+  color: var(--tension);
+  font-size: 12px;
+}
+
+.results-empty { color: var(--text-dim); text-align: center; padding: 40px 0; }
+
+@media (max-width: 640px) {
+  .hero-title { font-size: 22px; }
+  .card { padding: 18px; }
+}
