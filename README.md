@@ -62,6 +62,21 @@ No secrets, no scraped data. `data/` (transcripts, audio, the SQLite DB, bios, m
 
 [MIT](LICENSE).
 
-## Attribution & sources
+## Intended use, content & attribution
 
-This tool indexes and **links to** publicly available podcast content; it does not redistribute transcripts or audio. External biographical facts come from Wikidata (CC0) and Wikipedia (CC BY-SA) with attribution. Every claim in the app cites its source.
+**`lessons` is a personal research tool, not a content service.** It is meant to
+run locally so an individual can learn from podcasts they already follow.
+
+- The **graph holds no MP3 or full-transcript data** — only a derived set of
+  nodes/edges and **short quotations that link back** to the source at its
+  timestamp.
+- Podcast **audio is downloaded only transiently to transcribe locally, then
+  deleted.** Full transcripts are not kept by default and are never committed.
+- Source material belongs to its creators; every item **cites and links to** the
+  original. Prefer sources published for consumption (a podcast's public **RSS
+  feed**) over scraping platforms whose terms forbid it.
+- External bios come from Wikidata (CC0) and Wikipedia (CC BY-SA), attributed
+  in-app, never committed.
+
+See [`NOTICE.md`](NOTICE.md) for the full statement of intent, retention, and
+your responsibilities as a user. This is design intent, not legal advice.
