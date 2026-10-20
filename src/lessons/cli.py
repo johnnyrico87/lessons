@@ -134,7 +134,24 @@ def serve(
     port: int = typer.Option(8787, "--port", help="Port to bind on 127.0.0.1."),
 ) -> None:
     """Pass C — serve the splash, situation-first search, and graph explorer on 127.0.0.1."""
-    _todo("serve", "Phase 5")
+    try:
+        import uvicorn
+    except ImportError:
+        typer.secho(
+            "uvicorn not installed; pip install -e '.[serve]'",
+            fg=typer.colors.YELLOW,
+            err=True,
+        )
+        raise typer.Exit(code=1) from None
+
+    from lessons.store import Store
+    from lessons.web import build_app
+
+    store = Store(_db_path())
+    app_ = build_app(store)
+    typer.echo(f"serving lessons on http://127.0.0.1:{port}  (Ctrl-C to stop)")
+    # Always bind loopback explicitly — never 0.0.0.0 (R§5.1).
+    uvicorn.run(app_, host="127.0.0.1", port=port, log_level="info")
 
 
 if __name__ == "__main__":

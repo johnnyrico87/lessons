@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>lessons — learn from how great people diverged</title>
+  <meta name="theme-color" content="#0f1115" />
+  <link rel="manifest" href="/manifest.webmanifest" />
+  <link rel="apple-touch-icon" href="/static/icon-192.png" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="lessons" />
+  <link rel="stylesheet" href="/static/styles.css" />
+</head>
+<body>
+  <header class="topbar">
+    <span class="wordmark">lessons</span>
+    <nav class="get-app">
+      <button id="install-btn" class="btn btn-ghost" hidden>Install as app</button>
+      <span id="install-hint" class="install-hint" hidden></span>
+      <a class="btn btn-ghost" href="https://github.com/johnnyrico87/lessons" target="_blank" rel="noopener">View on GitHub</a>
+    </nav>
+  </header>
+
+  <!-- Splash: the search box is the hero; leaders float in an ambient layer -->
+  <main id="splash" class="splash">
+    <div id="float-layer" class="float-layer" aria-hidden="true"></div>
+    <section class="hero">
+      <h1 class="hero-title">What is your current situation or challenge you're trying to solve?</h1>
+      <form id="search-form" class="search-form" role="search">
+        <input
+          id="search-input"
+          class="search-input"
+          type="text"
+          autocomplete="off"
+          placeholder="e.g. how much should I disclose to my co-founders?"
+          aria-label="Describe your situation"
+        />
+        <button class="btn btn-primary" type="submit" aria-label="Search">→</button>
+      </form>
+      <p class="hero-sub">
+        Pointers to what these leaders actually did — the exact quote, episode, and minute.
+        No invented advice.
+      </p>
+    </section>
+  </main>
+
+  <!-- Results -->
+  <section id="results" class="results" hidden>
+    <div class="results-head">
+      <button id="back-btn" class="btn btn-ghost">← New search</button>
+      <p id="results-meta" class="results-meta"></p>
+    </div>
+    <div id="results-list" class="results-list"></div>
+    <p id="results-empty" class="results-empty" hidden>
+      No pointers yet for that situation. Try describing it differently, or the graph
+      may not be built yet.
+    </p>
+  </section>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

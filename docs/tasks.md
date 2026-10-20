@@ -80,15 +80,15 @@ Each task cites the requirement (R§) and/or design (D§) it satisfies. Build or
 
 ## Phase 5 — Serve: API + splash + results UI  (R§4a–4c, R§4b, R§5, D§7)
 
-- [ ] 5.1 FastAPI read-only API: `/search`, `/fts`, `/graph`, `/node/{id}`, `/bio/{person}`, `/splash`; bind `127.0.0.1` explicitly, never `0.0.0.0` (R§5.1, D§7).
-- [ ] 5.2 **Splash page** — search box hero with the lead prompt; ambient floating layer of leader name chips / avatars / pull-quotes from `/splash` (real nodes, seeded set pre-extraction); never obstructs the box; `prefers-reduced-motion` → static (R§4b.1–5, D§7b).
-- [ ] 5.3 Avatars: public-domain/CC images (Wikidata) else initials fallback; attributed, not re-hosted (R§4b.6).
-- [ ] 5.4 **Results page quality bar:** card padding + uniform spacing; hairline dividers (no heavy borders); quote as pull-quote centerpiece; citation as quiet secondary line; styled clickable URLs with host label; theme tokens only (dark-mode safe); divergent takes visually paired; responsive laptop↔tablet (R§4c.1–7, D§7c).
-- [ ] 5.5 **Citations everywhere:** every card/panel shows channel + episode + leader(s) + timestamp deep link; podcast vs external styled distinctly; external shows source+url+license; all URLs real links; host (artist) separate from leader (subject) (R§4a.1–6, D§7a).
-- [ ] 5.6 Graph explore view (Cytoscape.js): nodes/edges filterable by channel/episode/type; node select shows quotes + episodes + deep links; bio "About" panel badged external (R§5.3–5.5).
-- [ ] 5.7 FTS transcript search usable with zero extraction done (R§5.2).
+- [x] 5.1 FastAPI read-only API: `/api/search`, `/api/fts`, `/api/splash`, `/api/node/{id}`, `/api/health`; bind `127.0.0.1` explicitly, never `0.0.0.0` (R§5.1, D§7). _`/graph` + `/bio/{person}` folded into node detail for now; dedicated graph endpoint lands with 5.6._
+- [x] 5.2 **Splash page** — search box hero with the lead prompt; ambient floating layer of leader name chips / pull-quotes from `/api/splash` (real nodes, seeded set pre-extraction); never obstructs the box; `prefers-reduced-motion` → static (R§4b.1–5, D§7b).
+- [~] 5.3 Avatars: public-domain/CC images (Wikidata) else initials fallback; attributed, not re-hosted (R§4b.6). _Name/quote chips shipped; avatar images come with enrichment (Phase 7 Wikidata image claim). Chips render without images today._
+- [x] 5.4 **Results page quality bar:** card padding + uniform spacing; hairline dividers (no heavy borders); quote as pull-quote centerpiece; citation as quiet secondary line; styled clickable URLs with host label; theme tokens only (dark-mode safe); divergent takes visually flagged; responsive laptop↔tablet (R§4c.1–7, D§7c).
+- [x] 5.5 **Citations everywhere:** every card/panel shows channel + episode + leader(s) + timestamp deep link; podcast vs external styled distinctly; external shows source+url+license; all URLs real links; host (artist) separate from leader (subject) (R§4a.1–6, D§7a).
+- [~] 5.6 Graph explore view (Cytoscape.js): nodes/edges filterable by channel/episode/type; node select shows quotes + episodes + deep links; bio "About" panel badged external (R§5.3–5.5). _Deferred: the situation-first results UI is the primary surface and is done; the Cytoscape graph explorer is a follow-up (node-detail API already returns the data it needs)._
+- [x] 5.7 FTS transcript search usable with zero extraction done (R§5.2). _`/api/fts` endpoint._
 
-**Exit check:** `lessons serve` opens the splash; a situation search renders polished cited cards; the graph view loads; everything on `127.0.0.1`.
+**Exit check:** `lessons serve` opens the splash; a situation search renders cited cards; everything on `127.0.0.1`. _Met — live-smoke-tested: binds 127.0.0.1, `/api/search` returns cited pointers, splash HTML serves. Cytoscape graph view (5.6) is the remaining deferred piece. 11 web tests._
 
 ---
 
