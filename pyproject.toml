@@ -1,0 +1,52 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "lessons"
+version = "0.0.1"
+description = "A local-first knowledge graph of learnings from business/history video podcasts — situation-first search with full provenance."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { file = "LICENSE" }
+authors = [{ name = "lessons contributors" }]
+keywords = ["knowledge-graph", "podcasts", "youtube", "transcripts", "local-first", "llm"]
+classifiers = [
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Text Processing :: Linguistic",
+    "Environment :: Console",
+]
+
+# Core deps kept minimal for the Phase 0 scaffold; heavy passes add theirs in later phases.
+dependencies = [
+    "typer>=0.12",
+]
+
+[project.optional-dependencies]
+# Each pass's heavy deps are opt-in extras so `pip install -e .` stays light.
+ingest = ["yt-dlp>=2024.0", "youtube-transcript-api>=0.6", "faster-whisper>=1.0"]
+extract = ["ollama>=0.3", "pydantic>=2.6"]
+serve = ["fastapi>=0.110", "uvicorn>=0.29"]
+dev = ["pytest>=8.0", "ruff>=0.5"]
+
+[project.scripts]
+lessons = "lessons.cli:app"
+
+[project.urls]
+Homepage = "https://github.com/OWNER/lessons"
+Repository = "https://github.com/OWNER/lessons"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/lessons"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

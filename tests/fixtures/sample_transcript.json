@@ -1,0 +1,26 @@
+{
+  "video": {
+    "id": "SAMPLE0001",
+    "channel": "Founders",
+    "channel_handle": "@DavidSenra",
+    "title": "Sample Episode — John D. Rockefeller",
+    "published_at": "2024-01-15",
+    "duration_s": 3600,
+    "url": "https://youtu.be/SAMPLE0001"
+  },
+  "lines": [
+    { "start_s": 120, "text": "Rockefeller kept his plans secret even from his own partners." },
+    { "start_s": 185, "text": "He believed silence was a competitive advantage." },
+    { "start_s": 640, "text": "Contrast that with founders who preached radical transparency." }
+  ],
+  "expected": {
+    "nodes": [
+      { "type": "person", "label": "John D. Rockefeller" },
+      { "type": "principle", "label": "secrecy as competitive advantage" },
+      { "type": "situation", "label": "deciding how much to disclose to partners" }
+    ],
+    "edges": [
+      { "relation": "contrasts", "note": "secrecy vs. radical transparency" }
+    ]
+  }
+}

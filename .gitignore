@@ -1,0 +1,26 @@
+# Byte-compiled / optimized / caches
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.pytest_cache/
+.ruff_cache/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Secrets — never commit keys
+.env
+
+# User data — never commit transcripts, audio, DB, bios, model cache (R§6.2)
+data/
+
+# OS / editor noise
+.DS_Store
+*.swp
+.idea/
+.vscode/
