@@ -43,6 +43,10 @@ pip install -e ".[serve]"     # fastapi, uvicorn
 
 Copy `.env.example` to `.env` if you want the optional cloud-LLM path; the app runs fully local with no keys.
 
+### First run ships a starter graph
+
+The repo includes a small **curated starter graph** at [`seed/lessons-seed.json`](seed/lessons-seed.json) — the maintainer's notes (short quotes + timestamps + the connections drawn), never audio or transcripts. The first time you run `lessons serve` with an empty data dir, that seed is rebuilt into your local DB, so the app is populated, not blank. Your own additions extend the same graph; your private data dir is never committed. To refresh the shipped seed from your working DB, run `lessons seed-export`.
+
 ## Install as an app
 
 Once `lessons serve` is running, Chromium browsers offer a one-click **Install as app** from the splash page. Safari (macOS/iPad) installs via **Share → Add to Dock / Add to Home Screen**. Firefox desktop has no install — pin it as a tab. (Per-browser detail: [`docs/design.md`](docs/design.md) §9a.)
