@@ -259,8 +259,10 @@ class Extractor:
         return None
 
     def _lines_for(self, video_id: str, fallback_text: str) -> list[dict]:
-        """Phase 2 stores transcript text; per-line timestamps live on the
-        TranscriptResult at ingest time. Until lines are persisted, treat the
-        whole transcript as one t=0 chunk. (Line persistence is a Phase 2/3
-        hardening item; the chunker is ready for real lines.)"""
+        """Use persisted per-line timestamps when available (so chunks and
+        mentions carry real minutes); fall back to a single t=0 chunk only when
+        no lines were stored (e.g. a text-only transcript)."""
+        lines = self.store.lines_for(video_id)
+        if lines:
+            return lines
         return [{"start_s": 0, "text": fallback_text}]

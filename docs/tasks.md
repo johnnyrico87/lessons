@@ -36,7 +36,8 @@ Each task cites the requirement (R§) and/or design (D§) it satisfies. Build or
 
 - [x] 2.1 Channel enumeration via `yt-dlp` `/videos` playlist → `channels` + `videos` rows (id, title, date, duration, url) (R§1.1, D§6).
 - [x] 2.2 Transcript fetch via `youtube-transcript-api` with per-line timestamps → `transcripts` (`source='captions'`) + file under `data/transcripts/` (R§1.2, R§1.4).
-- [x] 2.3 Whisper fallback: no captions → `yt-dlp` audio → `faster-whisper` → `transcripts` (`source='whisper'`) (R§1.3). _Done: `whisper_transcribe` downloads bestaudio to a temp file, transcribes with faster-whisper into timestamped segments, and cleans up the audio. Tested with mocked yt-dlp + model (no network/audio). Remaining follow-up: persist per-line timestamps into the store so extract chunks on real times (currently captions/whisper lines are produced but the store keeps only the joined text)._
+- [x] 2.3 Whisper fallback: no captions → `yt-dlp` audio → `faster-whisper` → `transcripts` (`source='whisper'`) (R§1.3). _Done: `whisper_transcribe` downloads bestaudio, transcribes into timestamped segments, cleans up. Tested with mocked yt-dlp + model._
+- [x] 2.3a **Transcript line persistence** (closes the 2.3 follow-up): new `transcript_lines` table (schema v2, auto-upgrades old DBs); ingest persists captions/whisper per-line timestamps; `extract` chunks on the real lines so mentions carry real minutes (verified a mention lands at 300s, never t=0). Citation deep-links now point to the right timestamp.
 - [x] 2.4 Resumability: skip already-ingested video ids via `videos.ingested_at` (R§1.5, R§7.2).
 - [x] 2.5 De-dup across channels by video id, then normalized title + duration bucket — handles the likely Senra/Founders overlap (R§1.6).
 - [x] 2.6 Rate-limit handling: exponential backoff + jitter (R§1.7). _Concurrency cap deferred — ingest is currently sequential._
@@ -61,7 +62,7 @@ Each task cites the requirement (R§) and/or design (D§) it satisfies. Build or
 
 **Exit check:** `lessons extract` over the thin-slice transcripts fills `nodes/edges/mentions`; at least one `contradicts`/`contrasts` edge appears; re-run at same prompt version is a no-op. _Met (12 extract tests)._
 
-> Phase 3 note: per-line timestamp persistence from ingest is not wired yet, so a transcript is currently extracted as one t=0 chunk in the live path; the chunker is tested on real timestamped lines and ready. Persisting ingest lines is a small Phase 2/3 hardening follow-up.
+> Phase 3 note (RESOLVED in 2.3a): per-line timestamp persistence is now wired — ingest stores lines in `transcript_lines` and `extract` chunks on them, so the live path no longer collapses to a single t=0 chunk. A text-only transcript with no stored lines still falls back to one t=0 chunk.
 
 ---
 

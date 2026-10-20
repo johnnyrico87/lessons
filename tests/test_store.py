@@ -177,3 +177,28 @@ def test_fts_search_finds_transcript(store):
     hits = store.fts_search("secrecy")
     assert len(hits) == 1
     assert hits[0]["video_id"] == "SAMPLE0001"
+
+
+# --- transcript line persistence -------------------------------------------
+
+def test_lines_round_trip(store):
+    lines = [
+        {"start_s": 0, "text": "first"},
+        {"start_s": 42, "text": "second"},
+    ]
+    store.add_transcript("SAMPLE0001", "first\nsecond", "captions", lines=lines)
+    got = store.lines_for("SAMPLE0001")
+    assert got == lines
+
+
+def test_lines_absent_returns_empty(store):
+    store.add_transcript("SAMPLE0001", "no lines here", "captions")
+    assert store.lines_for("SAMPLE0001") == []
+
+
+def test_reingest_replaces_lines(store):
+    store.add_transcript("SAMPLE0001", "a", "captions", lines=[{"start_s": 1, "text": "a"}])
+    store.add_transcript(
+        "SAMPLE0001", "b", "captions", lines=[{"start_s": 2, "text": "b"}]
+    )
+    assert store.lines_for("SAMPLE0001") == [{"start_s": 2, "text": "b"}]

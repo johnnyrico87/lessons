@@ -180,3 +180,41 @@ def test_chunk_transcript_windows_and_overlap():
 
 def test_chunk_empty_is_empty():
     assert chunk_transcript([]) == []
+
+
+# --- extract uses persisted real timestamps (not t=0) ----------------------
+
+def test_extract_chunks_on_persisted_line_timestamps(store):
+    # Re-ingest v1's transcript WITH timestamped lines well past t=0.
+    store.add_transcript(
+        "v1",
+        "early\nlate",
+        "captions",
+        lines=[{"start_s": 300, "text": "early"}, {"start_s": 1500, "text": "late"}],
+    )
+
+    # LLM emits a node WITHOUT its own timestamp detail => falls back to the
+    # chunk's real start_s, which must come from the persisted lines, not 0.
+    seen_chunks = []
+
+    class ChunkAwareLLM:
+        model_name = "fake"
+
+        def complete(self, prompt, transcript_chunk):
+            seen_chunks.append(transcript_chunk)
+            # node timestamp_s=0 so the stored mention timestamp is driven by
+            # the chunk start (the thing we're verifying)
+            return _payload(
+                [{"type": "lesson", "label": "x", "quote": "q", "timestamp_s": 0}]
+            )
+
+    Extractor(store, ChunkAwareLLM()).extract(["v1"])
+    # chunks were built from the real lines (300s and 1500s are >600s apart,
+    # so they land in separate windows)
+    joined = "\n".join(seen_chunks)
+    assert "early" in joined and "late" in joined
+    # a mention landed at the first chunk's real start (300), never 0
+    row = store.conn.execute(
+        "SELECT MIN(timestamp_s) AS t FROM mentions"
+    ).fetchone()
+    assert row["t"] == 300

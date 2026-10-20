@@ -175,3 +175,21 @@ def test_probe_reports_coverage_and_does_not_persist(store):
     # probe is read-only
     assert store.count("videos") == 0
     assert "coverage 50%" in report.render()
+
+
+# --- line persistence (R§1.2 timestamps) -----------------------------------
+
+def test_ingest_persists_transcript_lines(store):
+    cm = ChannelMeta(id="C1", handle="@DavidSenra", url="u", name="David Senra")
+    v = VideoMeta("v1", "C1", "@DavidSenra", "T", "2024-01-01", 600, "https://youtu.be/v1")
+    tr = TranscriptResult(
+        text="one\ntwo",
+        source="captions",
+        lines=[{"start_s": 10, "text": "one"}, {"start_s": 125, "text": "two"}],
+    )
+    prov = FakeProvider({"@DavidSenra": cm}, {"@DavidSenra": [v]}, {"v1": tr})
+    Ingester(store, prov).ingest(channels=[{"handle": "@DavidSenra", "url": "u"}])
+    assert store.lines_for("v1") == [
+        {"start_s": 10, "text": "one"},
+        {"start_s": 125, "text": "two"},
+    ]
