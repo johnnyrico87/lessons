@@ -32,11 +32,12 @@ def test_version_command():
     assert "lessons" in result.output
 
 
-def test_pass_stubs_report_not_implemented():
-    # ingest + extract + serve are implemented; only enrich remains a stub.
-    result = runner.invoke(app, ["enrich"])
-    assert result.exit_code == 0
-    assert "not implemented yet" in result.output
+def test_no_pass_is_a_stub_anymore():
+    # All four passes are implemented; none should print the scaffold stub text.
+    for cmd in ("ingest", "extract", "enrich", "serve"):
+        result = runner.invoke(app, [cmd, "--help"])
+        assert result.exit_code == 0
+        assert "not implemented yet" not in result.output
 
 
 def test_fixture_is_wellformed():

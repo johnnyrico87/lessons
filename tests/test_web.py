@@ -131,3 +131,61 @@ def test_manifest_served(client):
     r = client.get("/manifest.webmanifest")
     assert r.status_code == 200
     assert r.json()["display"] == "standalone"
+
+
+# --- enrichment surfaces (Phase 7) ----------------------------------------
+
+def test_node_detail_includes_external_bio_badged(client):
+    s = client._store
+    pid = s.add_podcast_node(
+        "person", "Rockefeller", mentions=[Mention("v1", 100, "Rockefeller...")]
+    )
+    s.add_bio(
+        pid, "Wikipedia", "https://en.wikipedia.org/wiki/John_D._Rockefeller",
+        "CC BY-SA 4.0", title="John D. Rockefeller", summary="Industrialist.",
+        image_url="https://img/r.jpg", image_license="see Wikimedia Commons",
+    )
+    data = client.get(f"/api/node/{pid}").json()
+    assert data["origin"] == "podcast"          # the person node itself
+    assert data["bio"]["origin"] == "external"  # bio clearly badged external
+    assert data["bio"]["license"] == "CC BY-SA 4.0"
+    assert data["bio"]["image_url"] == "https://img/r.jpg"
+    # podcast citations and the external bio are separate keys, never merged
+    assert "citations" in data and "bio" in data
+
+
+def test_splash_includes_avatar_when_enriched(client):
+    s = client._store
+    pid = s.add_podcast_node(
+        "person", "Carnegie", mentions=[Mention("v1", 50, "Carnegie built steel.")]
+    )
+    s.add_bio(
+        pid, "Wikipedia", "https://en.wikipedia.org/wiki/Andrew_Carnegie",
+        "CC BY-SA 4.0", image_url="https://img/c.jpg", image_license="see Commons",
+    )
+    data = client.get("/api/splash").json()
+    carnegie = next(e for e in data["elements"] if e["label"] == "Carnegie")
+    assert carnegie["image_url"] == "https://img/c.jpg"
+
+
+# --- PWA assets (Phase 6) --------------------------------------------------
+
+def test_service_worker_served_from_root(client):
+    r = client.get("/sw.js")
+    assert r.status_code == 200
+    assert "application/javascript" in r.headers["content-type"]
+    assert "serviceWorker".lower() in r.text.lower() or "caches" in r.text
+
+
+def test_icons_served(client):
+    for path in ("/static/icon-192.png", "/static/icon-512.png"):
+        r = client.get(path)
+        assert r.status_code == 200
+        assert r.content[:8] == b"\x89PNG\r\n\x1a\n"  # real PNG signature
+
+
+def test_manifest_lists_icons_and_maskable(client):
+    data = client.get("/manifest.webmanifest").json()
+    srcs = [i["src"] for i in data["icons"]]
+    assert "/static/icon-512.png" in srcs
+    assert any("maskable" in i.get("purpose", "") for i in data["icons"])

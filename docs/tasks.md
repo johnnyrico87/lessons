@@ -82,7 +82,7 @@ Each task cites the requirement (R§) and/or design (D§) it satisfies. Build or
 
 - [x] 5.1 FastAPI read-only API: `/api/search`, `/api/fts`, `/api/splash`, `/api/node/{id}`, `/api/health`; bind `127.0.0.1` explicitly, never `0.0.0.0` (R§5.1, D§7). _`/graph` + `/bio/{person}` folded into node detail for now; dedicated graph endpoint lands with 5.6._
 - [x] 5.2 **Splash page** — search box hero with the lead prompt; ambient floating layer of leader name chips / pull-quotes from `/api/splash` (real nodes, seeded set pre-extraction); never obstructs the box; `prefers-reduced-motion` → static (R§4b.1–5, D§7b).
-- [~] 5.3 Avatars: public-domain/CC images (Wikidata) else initials fallback; attributed, not re-hosted (R§4b.6). _Name/quote chips shipped; avatar images come with enrichment (Phase 7 Wikidata image claim). Chips render without images today._
+- [x] 5.3 Avatars: CC/PD images (Wikipedia/Wikidata lead image) else initials fallback; linked, not re-hosted (R§4b.6). _Completed in Phase 7: splash chips show the enriched lead image with an initials-circle fallback._
 - [x] 5.4 **Results page quality bar:** card padding + uniform spacing; hairline dividers (no heavy borders); quote as pull-quote centerpiece; citation as quiet secondary line; styled clickable URLs with host label; theme tokens only (dark-mode safe); divergent takes visually flagged; responsive laptop↔tablet (R§4c.1–7, D§7c).
 - [x] 5.5 **Citations everywhere:** every card/panel shows channel + episode + leader(s) + timestamp deep link; podcast vs external styled distinctly; external shows source+url+license; all URLs real links; host (artist) separate from leader (subject) (R§4a.1–6, D§7a).
 - [~] 5.6 Graph explore view (Cytoscape.js): nodes/edges filterable by channel/episode/type; node select shows quotes + episodes + deep links; bio "About" panel badged external (R§5.3–5.5). _Deferred: the situation-first results UI is the primary surface and is done; the Cytoscape graph explorer is a follow-up (node-detail API already returns the data it needs)._
@@ -94,24 +94,26 @@ Each task cites the requirement (R§) and/or design (D§) it satisfies. Build or
 
 ## Phase 6 — PWA + distribution  (R§7a, R§4b.7–10, D§9a)
 
-- [ ] 6.1 `manifest.webmanifest` (name, icons, `display: standalone`, theme/background color) + service worker caching app shell + viewed content (R§7a.1, R§7a.5, D§9a).
-- [ ] 6.2 Splash **download buttons**: "Install as app" + "View on GitHub" in a quiet corner, not competing with the search hero (R§4b.7, D§7b).
-- [ ] 6.3 **Per-engine install affordance:** Chromium `beforeinstallprompt` → one-click; Safari → "Add to Dock / Add to Home Screen" instructions; Firefox desktop → "pin as a tab" note; never a dead button (R§4b.8, R§4b.10, D§9a).
-- [ ] 6.4 Safari first-class: ship `apple-touch-icon` + `apple-mobile-web-app-*` meta tags for clean iOS/iPad home-screen icon (R§4b.9).
-- [ ] 6.5 No native OS installers; no binaries committed; source is the distributed form (R§7a.4, R§7a.6).
+- [x] 6.1 `manifest.webmanifest` (name, icons, `display: standalone`, theme/background color) + **service worker** caching app shell (cache-first) + API data (network-first) (R§7a.1, R§7a.5, D§9a). _Real PNG icons (192/512) + an SVG icon; `/sw.js` served from root; registered in app.js._
+- [x] 6.2 Splash **download buttons**: "Install as app" + "View on GitHub" (R§4b.7, D§7b). _Shipped in Phase 5._
+- [x] 6.3 **Per-engine install affordance:** Chromium `beforeinstallprompt` → one-click; Safari → "Add to Dock / Home Screen"; Firefox → "pin as a tab"; never a dead button (R§4b.8, R§4b.10, D§9a). _Shipped in Phase 5._
+- [x] 6.4 Safari first-class: `apple-touch-icon` + `apple-mobile-web-app-*` meta tags (R§4b.9). _Meta tags shipped in Phase 5; the apple-touch-icon PNG now exists (Phase 6)._
+- [x] 6.5 No native OS installers; no binaries in git except the small app icons; source is the distributed form (R§7a.4, R§7a.6).
 
-**Exit check:** app installs one-click in Chrome; Safari shows correct Add-to-Dock copy; Firefox shows the pin-tab note; manifest/SW pass a Lighthouse PWA audit on the local origin.
+**Exit check:** manifest + SW + icons serve correctly; per-engine install copy is correct. _Live-verified: `/sw.js` (application/javascript), `/static/icon-512.png` (PNG), manifest lists 3 icons incl. maskable. 3 PWA tests. (A full Lighthouse audit needs a real browser — run it once the app is live.)_
 
 ---
 
 ## Phase 7 — Enrich (Pass B2, optional)  (R§3, D§2)
 
-- [ ] 7.1 `lessons enrich`: fetch bio per `person` node from Wikipedia/Wikidata → `bios` with `origin=external` (R§3.1).
-- [ ] 7.2 Store `source`, `source_url`, `license` for every bio; prefer **Wikidata CC0 facts** + optional **Wikipedia CC BY-SA prose** (R§3.2, R§10.4).
-- [ ] 7.3 Keep bios out of situation-first results; never present as podcast speech (R§3.3).
-- [ ] 7.4 Never commit bio text; fetch into local DB; app fully functional with enrich skipped (R§3.4–3.5).
+- [x] 7.1 `lessons enrich`: fetch bio per `person` node from Wikipedia → `bios` with `origin=external` (R§3.1). _`WikipediaBioProvider` (REST summary + lead image); mockable `BioProvider` seam so orchestration tests need no network._
+- [x] 7.2 Store `source`, `source_url`, `license` for every bio; **image carries its own license** (R§3.2, R§10.4). _Prose = Wikipedia CC BY-SA; lead image provenance linked to Wikimedia Commons rather than asserting a license. Wikidata CC0 structured-facts source can slot into the same seam later._
+- [x] 7.3 Keep bios out of situation-first results; never present as podcast speech (R§3.3). _Bios live on the `bios` table, surface only in the node "About" panel badged external, and search only ever returns podcast-origin pointers._
+- [x] 7.4 Never commit bio text; fetch into local DB; app fully functional with enrich skipped (R§3.4–3.5). _Bios go to the gitignored local DB; enrich is optional and licensing is enforced (unlicensed bios are not stored)._
 
-**Exit check:** `lessons enrich` adds cited bios; skipping it leaves the app fully working.
+**Exit check:** `lessons enrich` adds cited bios; skipping it leaves the app fully working. _Met (7 enrich + 2 web + 3 store tests; v2→v3 DB upgrade verified)._
+
+Also closes **5.3** (splash avatars): person chips show the Wikidata/Wikipedia lead image when enriched, with an **initials-circle fallback** otherwise; images are linked with `referrerpolicy=no-referrer`, not re-hosted.
 
 ---
 

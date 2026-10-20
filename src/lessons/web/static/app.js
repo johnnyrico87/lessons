@@ -80,9 +80,13 @@ async function loadSplash() {
     data.elements.forEach((el, i) => {
       const chip = document.createElement("div");
       chip.className = "chip";
-      chip.innerHTML = el.quote
-        ? `${escapeHtml(el.label)} · <span class="chip-quote">“${escapeHtml(trunc(el.quote, 48))}”</span>`
-        : escapeHtml(el.label);
+      const avatar = el.image_url
+        ? `<img class="chip-avatar" src="${el.image_url}" alt="" loading="lazy" referrerpolicy="no-referrer" />`
+        : `<span class="chip-initials">${initials(el.label)}</span>`;
+      const quote = el.quote
+        ? ` · <span class="chip-quote">“${escapeHtml(trunc(el.quote, 44))}”</span>`
+        : "";
+      chip.innerHTML = `${avatar}${escapeHtml(el.label)}${quote}`;
       // scatter around the edges, away from the centered hero
       const angle = (i / n) * 2 * Math.PI;
       const top = 50 + 38 * Math.sin(angle);
@@ -96,6 +100,16 @@ async function loadSplash() {
 }
 
 function trunc(s, n) { return s.length > n ? s.slice(0, n - 1) + "…" : s; }
+
+function initials(name) {
+  return String(name || "")
+    .split(/\s+/)
+    .map((w) => w[0])
+    .filter(Boolean)
+    .slice(0, 2)
+    .join("")
+    .toUpperCase();
+}
 
 // ---------- per-browser install affordance (R§4b.8-10) ----------
 let deferredPrompt = null;
@@ -151,3 +165,12 @@ $("#back-btn").addEventListener("click", () => {
 
 loadSplash();
 setupInstallFallback();
+
+// Register the service worker for offline app-shell + cached data (Phase 6).
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("/sw.js").catch(() => {
+      /* SW is an enhancement; the app works without it */
+    });
+  });
+}

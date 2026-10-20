@@ -135,6 +135,26 @@ html, body {
   animation: drift 18s ease-in-out infinite alternate;
 }
 .chip .chip-quote { color: var(--text-dim); font-style: italic; }
+.chip-avatar {
+  width: 22px; height: 22px;
+  border-radius: 999px;
+  object-fit: cover;
+  margin-right: 8px;
+  vertical-align: middle;
+  border: 1px solid var(--hairline);
+}
+.chip-initials {
+  display: inline-grid;
+  place-items: center;
+  width: 22px; height: 22px;
+  border-radius: 999px;
+  margin-right: 8px;
+  background: var(--surface);
+  color: var(--text-dim);
+  border: 1px solid var(--hairline);
+  font-size: 10px;
+  vertical-align: middle;
+}
 @keyframes drift {
   from { transform: translateY(-6px); }
   to   { transform: translateY(6px); }

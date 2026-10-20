@@ -10,7 +10,7 @@ migration SQL when the shape changes.
 
 from __future__ import annotations
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 SCHEMA_SQL = """
 PRAGMA foreign_keys = ON;
@@ -81,6 +81,8 @@ CREATE TABLE IF NOT EXISTS bios (              -- external enrichment layer
     license         TEXT NOT NULL,             -- non-null by invariant
     title           TEXT,
     summary         TEXT,
+    image_url       TEXT,                       -- avatar (Wikidata image claim)
+    image_license   TEXT,                       -- images carry their OWN license
     fetched_at      TEXT
 );
 

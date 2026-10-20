@@ -71,11 +71,13 @@ def build_app(store: Store) -> FastAPI:
                 "SELECT quote FROM mentions WHERE node_id=? ORDER BY length(quote) DESC LIMIT 1",
                 (r["id"],),
             ).fetchone()
+            bio = store.bio_for(r["id"])
             elements.append(
                 {
                     "label": r["label"],
                     "kind": "leader",
                     "quote": quote_row["quote"] if quote_row else None,
+                    "image_url": bio["image_url"] if bio else None,
                 }
             )
         if not elements:
@@ -104,6 +106,22 @@ def build_app(store: Store) -> FastAPI:
         else:
             bio = store.cite_bio(node_id)
             out["citation"] = bio.to_dict() if bio else None
+
+        # A person node (podcast-origin) may ALSO carry an external bio — the
+        # "About" panel, always badged external and kept distinct from quotes.
+        if node["type"] == "person":
+            bio = store.bio_for(node_id)
+            if bio:
+                out["bio"] = {
+                    "source": bio["source"],
+                    "source_url": bio["source_url"],
+                    "license": bio["license"],
+                    "title": bio["title"],
+                    "summary": bio["summary"],
+                    "image_url": bio["image_url"],
+                    "image_license": bio["image_license"],
+                    "origin": "external",
+                }
         return out
 
     # --- static UI --------------------------------------------------------
@@ -117,6 +135,11 @@ def build_app(store: Store) -> FastAPI:
             return FileResponse(
                 STATIC_DIR / "manifest.webmanifest", media_type="application/manifest+json"
             )
+
+        @app.get("/sw.js")
+        def service_worker() -> FileResponse:
+            # Served from the app root so its scope covers the whole origin.
+            return FileResponse(STATIC_DIR / "sw.js", media_type="application/javascript")
 
         app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
