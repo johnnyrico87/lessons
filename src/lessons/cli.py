@@ -181,14 +181,51 @@ def serve(
         )
         raise typer.Exit(code=1) from None
 
+    from lessons.seed import seed_if_empty
     from lessons.store import Store
     from lessons.web import build_app
 
     store = Store(_db_path())
+    seeded = seed_if_empty(store)
+    if seeded:
+        typer.echo(
+            f"first run — seeded the shipped graph "
+            f"({seeded['nodes']} node(s), {seeded['edges']} edge(s))."
+        )
     app_ = build_app(store)
     typer.echo(f"serving lessons on http://127.0.0.1:{port}  (Ctrl-C to stop)")
     # Always bind loopback explicitly — never 0.0.0.0 (R§5.1).
     uvicorn.run(app_, host="127.0.0.1", port=port, log_level="info")
+
+
+@app.command("seed-export")
+def seed_export(
+    out: str = typer.Option(
+        "", "--out", help="Output path (default: repo seed/lessons-seed.json)."
+    ),
+) -> None:
+    """Export the current graph to the shipped JSON seed (the maintainer's notes).
+
+    Run this to refresh seed/lessons-seed.json from your working DB before
+    committing. Ships nodes/edges/mentions (short quotes), never transcript text.
+    """
+    import json
+
+    from lessons.seed import SEED_PATH
+    from lessons.store import Store
+
+    store = Store(_db_path())
+    try:
+        data = store.export_seed()
+    finally:
+        store.close()
+    out_path = Path(out) if out else SEED_PATH
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    out_path.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
+    typer.echo(
+        f"exported {len(data['nodes'])} node(s), {len(data['edges'])} edge(s), "
+        f"{len(data['mentions'])} mention(s) to {out_path}"
+    )
 
 
 if __name__ == "__main__":
