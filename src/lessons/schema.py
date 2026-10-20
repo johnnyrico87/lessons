@@ -10,7 +10,7 @@ migration SQL when the shape changes.
 
 from __future__ import annotations
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 SCHEMA_SQL = """
 PRAGMA foreign_keys = ON;
@@ -38,6 +38,13 @@ CREATE TABLE IF NOT EXISTS transcripts (
     text          TEXT,
     has_captions  INTEGER,   -- 1 = YouTube captions, 0 = whisper
     source        TEXT       -- 'captions' | 'whisper'
+);
+
+CREATE TABLE IF NOT EXISTS transcript_lines (   -- per-line timestamps for chunking + mentions
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    video_id    TEXT NOT NULL REFERENCES videos(id),
+    start_s     INTEGER NOT NULL,
+    text        TEXT NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS nodes (
@@ -95,6 +102,7 @@ CREATE INDEX IF NOT EXISTS idx_edges_src      ON edges(src_node_id);
 CREATE INDEX IF NOT EXISTS idx_edges_dst      ON edges(dst_node_id);
 CREATE INDEX IF NOT EXISTS idx_nodes_type     ON nodes(type);
 CREATE INDEX IF NOT EXISTS idx_bios_person    ON bios(person_node_id);
+CREATE INDEX IF NOT EXISTS idx_tlines_video   ON transcript_lines(video_id, start_s);
 
 -- Full-text search over transcripts (usable before extraction, R§5.2).
 CREATE VIRTUAL TABLE IF NOT EXISTS transcripts_fts USING fts5(video_id, text);

@@ -176,7 +176,7 @@ class Ingester:
                     v.id, v.channel_id, v.title, v.published_at, v.duration_s, v.url,
                     transcript_path=None, ingested_at=_now_iso(),
                 )
-                self.store.add_transcript(v.id, tr.text, tr.source)
+                self.store.add_transcript(v.id, tr.text, tr.source, lines=tr.lines)
                 if tr.source == "whisper":
                     result.whisper_used += 1
                 result.videos_ingested += 1

@@ -102,7 +102,13 @@ class Store:
         self.conn.commit()
         return id
 
-    def add_transcript(self, video_id: str, text: str, source: str) -> None:
+    def add_transcript(
+        self,
+        video_id: str,
+        text: str,
+        source: str,
+        lines: list[dict] | None = None,
+    ) -> None:
         if source not in ("captions", "whisper"):
             raise ValueError(f"transcript source must be captions|whisper, got {source!r}")
         has_captions = 1 if source == "captions" else 0
@@ -115,7 +121,23 @@ class Store:
             "INSERT INTO transcripts_fts(video_id, text) VALUES (?,?)",
             (video_id, text),
         )
+        if lines:
+            # Replace any existing lines for this video (idempotent re-ingest).
+            self.conn.execute("DELETE FROM transcript_lines WHERE video_id=?", (video_id,))
+            self.conn.executemany(
+                "INSERT INTO transcript_lines(video_id, start_s, text) VALUES (?,?,?)",
+                [(video_id, int(line["start_s"]), line["text"]) for line in lines],
+            )
         self.conn.commit()
+
+    def lines_for(self, video_id: str) -> list[dict]:
+        """Return stored per-line timestamps for a video, ordered by start.
+        Empty list when none were persisted (e.g. a text-only transcript)."""
+        rows = self.conn.execute(
+            "SELECT start_s, text FROM transcript_lines WHERE video_id=? ORDER BY start_s",
+            (video_id,),
+        ).fetchall()
+        return [{"start_s": r["start_s"], "text": r["text"]} for r in rows]
 
     # --- nodes ------------------------------------------------------------
     def add_podcast_node(
