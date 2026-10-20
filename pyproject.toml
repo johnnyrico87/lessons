@@ -29,7 +29,7 @@ dependencies = [
 ingest = ["yt-dlp>=2024.0", "youtube-transcript-api>=0.6", "faster-whisper>=1.0"]
 extract = ["ollama>=0.3", "pydantic>=2.6"]
 serve = ["fastapi>=0.110", "uvicorn>=0.29"]
-dev = ["pytest>=8.0", "ruff>=0.5"]
+dev = ["pytest>=8.0", "ruff>=0.5", "pydantic>=2.6"]
 
 [project.scripts]
 lessons = "lessons.cli:app"

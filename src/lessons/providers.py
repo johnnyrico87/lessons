@@ -7,6 +7,8 @@ these installed. Install with: pip install -e ".[ingest]".
 
 from __future__ import annotations
 
+import os
+import tempfile
 import time
 
 from lessons.ingest import (
@@ -17,11 +19,32 @@ from lessons.ingest import (
 )
 
 
+def whisper_segments_to_result(segments: list[dict]) -> TranscriptResult:
+    """Convert faster-whisper segments [{start, text}, ...] into a
+    TranscriptResult with per-line timestamps. Pure — unit-tested without the
+    model."""
+    lines = [
+        {"start_s": int(s.get("start", 0)), "text": (s.get("text") or "").strip()}
+        for s in segments
+        if (s.get("text") or "").strip()
+    ]
+    text = "\n".join(line["text"] for line in lines)
+    return TranscriptResult(text=text, source="whisper", lines=lines)
+
+
 class RealYouTubeProvider:
     """Live provider. Construct inside `serve`/`ingest` command paths only."""
 
-    def __init__(self, backoff_base_s: float = 1.0):
+    def __init__(
+        self,
+        backoff_base_s: float = 1.0,
+        whisper_model: str = "base",
+        whisper_compute_type: str = "int8",
+    ):
         self.backoff_base_s = backoff_base_s
+        self.whisper_model = whisper_model
+        self.whisper_compute_type = whisper_compute_type
+        self._whisper = None  # lazily constructed WhisperModel
 
     def channel_meta(self, handle: str, url: str) -> ChannelMeta:
         info = self._ytdlp_extract(url, flat=True)
@@ -78,17 +101,62 @@ class RealYouTubeProvider:
         return TranscriptResult(text=text, source="captions", lines=lines)
 
     def whisper_transcribe(self, video: VideoMeta) -> TranscriptResult:
+        """Download the video's audio and transcribe it locally with
+        faster-whisper, returning timestamped segments (R§1.3).
+
+        Audio goes to a temp dir and is deleted after transcription — it is raw
+        material we never keep or commit.
+        """
+        audio_path = self._download_audio(video)
         try:
-            from faster_whisper import WhisperModel  # type: ignore  # noqa: F401
+            segments = self._transcribe(audio_path)
+        finally:
+            try:
+                os.remove(audio_path)
+            except OSError:
+                pass
+        return whisper_segments_to_result(segments)
+
+    def _download_audio(self, video: VideoMeta) -> str:
+        """Download bestaudio to a temp file via yt-dlp; return its path."""
+        try:
+            import yt_dlp  # type: ignore
+        except ImportError as e:
+            raise RuntimeError("yt-dlp not installed; pip install -e '.[ingest]'") from e
+
+        tmpdir = tempfile.mkdtemp(prefix="lessons-audio-")
+        outtmpl = os.path.join(tmpdir, f"{video.id}.%(ext)s")
+        opts = {
+            "quiet": True,
+            "format": "bestaudio/best",
+            "outtmpl": outtmpl,
+            "noprogress": True,
+        }
+        for attempt in range(3):
+            try:
+                with yt_dlp.YoutubeDL(opts) as ydl:
+                    info = ydl.extract_info(video.url, download=True)
+                    return ydl.prepare_filename(info)
+            except Exception as e:
+                if attempt == 2:
+                    raise TransientIngestError(str(e)) from e
+                time.sleep(self.backoff_base_s * (2**attempt))
+        raise TransientIngestError("audio download failed")
+
+    def _transcribe(self, audio_path: str) -> list[dict]:
+        """Run faster-whisper, return [{start, text}, ...]."""
+        try:
+            from faster_whisper import WhisperModel  # type: ignore
         except ImportError as e:
             raise RuntimeError(
                 "faster-whisper not installed; pip install -e '.[ingest]'"
             ) from e
-        # Audio download + transcription is wired in Phase 2 hardening; the seam
-        # exists here so the orchestration and tests are complete now.
-        raise NotImplementedError(
-            "whisper audio path lands in Phase 2 hardening; captions cover v1 thin-slice"
-        )
+        if self._whisper is None:
+            self._whisper = WhisperModel(
+                self.whisper_model, compute_type=self.whisper_compute_type
+            )
+        segments, _info = self._whisper.transcribe(audio_path)
+        return [{"start": seg.start, "text": seg.text} for seg in segments]
 
     def _ytdlp_extract(self, url: str, flat: bool) -> dict:
         try:
@@ -111,3 +179,34 @@ def _upload_date(yyyymmdd: str | None) -> str:
     if not yyyymmdd or len(yyyymmdd) != 8:
         return ""
     return f"{yyyymmdd[0:4]}-{yyyymmdd[4:6]}-{yyyymmdd[6:8]}"
+
+
+class OllamaClient:
+    """Local LLM client for extraction (Pass B). Lazy-imports the ollama client.
+
+    Install with: pip install -e ".[extract]" and have Ollama running locally.
+    """
+
+    def __init__(self, model: str = "llama3.1"):
+        try:
+            import ollama  # type: ignore  # noqa: F401
+        except ImportError as e:
+            raise RuntimeError(
+                "ollama client not installed; pip install -e '.[extract]' "
+                "and run a local Ollama server"
+            ) from e
+        self.model_name = model
+
+    def complete(self, prompt: str, transcript_chunk: str) -> str:
+        import ollama  # type: ignore
+
+        resp = ollama.chat(
+            model=self.model_name,
+            messages=[
+                {"role": "system", "content": prompt},
+                {"role": "user", "content": transcript_chunk},
+            ],
+            format="json",
+            options={"temperature": 0},
+        )
+        return resp["message"]["content"]
