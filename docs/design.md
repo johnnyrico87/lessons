@@ -148,6 +148,22 @@ Design choices:
 - **Rate-limit handling:** exponential backoff + jitter on caption fetches; a configurable concurrency cap.
 - **Dry-run probe** (`lessons ingest --probe N`) samples N videos per channel and reports caption coverage % and median per-video latency — this produces the real full-backfill time estimate instead of a guess.
 
+### 6a. RSS source (preferred) + retention model
+
+**Why RSS over YouTube.** YouTube actively IP-blocks `youtube-transcript-api` caption requests, and downloading YouTube audio is the most explicitly ToS-prohibited action. A podcast's **public RSS feed** is the better source on both axes: the audio enclosures are published *for* podcast clients to fetch (robust, not blocked), and consuming a feed as intended is far more defensible. All three target shows expose audio via Megaphone feeds and publish **no** transcripts, so the path is uniform: **RSS → download MP3 → local Whisper → extract**.
+
+- `lessons ingest --source rss --feed <slug|url> [--limit N]`. Known slugs: `founders`, `david-senra`, `how-to-take-over-the-world`.
+- `RssProvider` matches the `YouTubeProvider` seam (stdlib feed parsing, no new dep), so the Ingester runs unchanged. `fetch_transcript` always returns `None` (feeds carry audio) → the Ingester falls through to `whisper_transcribe`, which downloads the enclosure, transcribes with faster-whisper into timestamped lines, and **deletes the audio**.
+- **Dependency pin:** `av>=11,<14` — faster-whisper 1.2.x calls a PyAV kwarg (`metadata_errors`) that PyAV ≥14 removed. Verified end-to-end on a real 4.5-min episode (66s, 47 timestamped lines).
+
+**Retention model (the graph is the product; everything upstream is a disposable build input):**
+
+| Artifact | Default | Why |
+|---|---|---|
+| MP3 audio | **always deleted** after transcription | riskiest to hoard (a full catalog copy); pure intermediate |
+| full transcript | kept only for re-extraction | the re-extraction cache — re-run Pass B at a new prompt with no re-download/re-Whisper |
+| graph + short quotes | kept | this *is* the app; also the cleanest fair-use posture (derived, short quotes, deep links) |
+
 ---
 
 ## 7. Web app / serve design

@@ -26,7 +26,7 @@ dependencies = [
 
 [project.optional-dependencies]
 # Each pass's heavy deps are opt-in extras so `pip install -e .` stays light.
-ingest = ["yt-dlp>=2024.0", "youtube-transcript-api>=1.0", "faster-whisper>=1.0"]
+ingest = ["yt-dlp>=2024.0", "youtube-transcript-api>=1.0", "faster-whisper>=1.0", "av>=11,<14"]
 extract = ["ollama>=0.3", "pydantic>=2.6"]
 serve = ["fastapi>=0.110", "uvicorn>=0.29"]
 dev = ["pytest>=8.0", "ruff>=0.5", "pydantic>=2.6", "fastapi>=0.110", "httpx>=0.27"]

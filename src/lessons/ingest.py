@@ -143,6 +143,7 @@ class Ingester:
         channels: list[dict[str, str]] | None = None,
         probe: int = 0,
         max_retries: int = 3,
+        limit: int = 0,
     ) -> IngestResult | ProbeReport:
         channels = channels or DEFAULT_CHANNELS
         if probe > 0:
@@ -156,7 +157,10 @@ class Ingester:
             self.store.add_channel(cm.id, cm.handle, cm.url, cm.name)
             result.channels += 1
 
-            for v in self.provider.list_videos(cm):
+            vids = self.provider.list_videos(cm)
+            if limit > 0:
+                vids = vids[:limit]
+            for v in vids:
                 result.videos_seen += 1
 
                 # de-dup across channels (R§1.6): by id first, then title+duration

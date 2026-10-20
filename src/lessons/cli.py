@@ -60,17 +60,44 @@ def ingest(
         "--probe",
         help="Dry-run: sample N videos/channel and report caption coverage + latency (Phase 2.7).",
     ),
+    source: str = typer.Option(
+        "youtube", "--source", help="Ingest source: 'youtube' or 'rss'."
+    ),
+    feed: str = typer.Option(
+        "", "--feed", help="RSS: a known slug (founders / david-senra / "
+        "how-to-take-over-the-world) or a feed URL. Required when --source rss."
+    ),
+    limit: int = typer.Option(
+        0, "--limit", help="Cap episodes ingested (0 = all). Use for a thin-slice run."
+    ),
 ) -> None:
     """Pass A — download transcripts + metadata from the configured channels."""
     from lessons.ingest import Ingester
-    from lessons.providers import RealYouTubeProvider
     from lessons.store import Store
 
     store = Store(_db_path())
     try:
-        ingester = Ingester(store, RealYouTubeProvider())
+        if source == "rss":
+            from lessons.rss import KNOWN_FEEDS, RssProvider
+
+            feed_url = KNOWN_FEEDS.get(feed, feed)
+            if not feed_url:
+                typer.secho(
+                    "--source rss requires --feed (a known slug or a URL)",
+                    fg=typer.colors.YELLOW, err=True,
+                )
+                raise typer.Exit(code=1) from None
+            provider = RssProvider(feed_url)
+            channels = [{"handle": feed or feed_url, "url": feed_url}]
+        else:
+            from lessons.providers import RealYouTubeProvider
+
+            provider = RealYouTubeProvider()
+            channels = None  # default three channels
+
+        ingester = Ingester(store, provider)
         try:
-            outcome = ingester.ingest(probe=probe)
+            outcome = ingester.ingest(channels=channels, probe=probe, limit=limit)
         except RuntimeError as e:
             # Honest, tidy message when the heavy ingest extra isn't installed.
             typer.secho(str(e), fg=typer.colors.YELLOW, err=True)
@@ -80,7 +107,7 @@ def ingest(
         else:
             r = outcome  # type: ignore[assignment]
             typer.echo(
-                f"ingested {r.videos_ingested} new video(s) across {r.channels} channel(s); "
+                f"ingested {r.videos_ingested} new episode(s); "
                 f"skipped {r.videos_skipped_existing} existing, {r.videos_deduped} duplicate(s); "
                 f"whisper used {r.whisper_used} time(s)."
             )
