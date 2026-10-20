@@ -8,6 +8,9 @@ pretending work is done.
 
 from __future__ import annotations
 
+import os
+from pathlib import Path
+
 import typer
 
 from lessons import __version__
@@ -18,6 +21,30 @@ app = typer.Typer(
     no_args_is_help=True,
     add_completion=False,
 )
+
+
+def _data_dir() -> Path:
+    """Per-OS application-data dir for the user's DB/transcripts (design §9a).
+
+    Honors LESSONS_DATA_DIR override; otherwise uses the platform convention.
+    """
+    override = os.environ.get("LESSONS_DATA_DIR")
+    if override:
+        return Path(override)
+    home = Path.home()
+    if os.name == "nt":
+        base = Path(os.environ.get("APPDATA", home / "AppData" / "Roaming"))
+    elif os.sys.platform == "darwin":  # type: ignore[attr-defined]
+        base = home / "Library" / "Application Support"
+    else:
+        base = Path(os.environ.get("XDG_DATA_HOME", home / ".local" / "share"))
+    return base / "lessons"
+
+
+def _db_path() -> Path:
+    d = _data_dir()
+    d.mkdir(parents=True, exist_ok=True)
+    return d / "lessons.db"
 
 
 def _todo(command: str, phase: str) -> None:
@@ -41,7 +68,30 @@ def ingest(
     ),
 ) -> None:
     """Pass A — download transcripts + metadata from the configured channels."""
-    _todo("ingest", "Phase 2")
+    from lessons.ingest import Ingester
+    from lessons.providers import RealYouTubeProvider
+    from lessons.store import Store
+
+    store = Store(_db_path())
+    try:
+        ingester = Ingester(store, RealYouTubeProvider())
+        try:
+            outcome = ingester.ingest(probe=probe)
+        except RuntimeError as e:
+            # Honest, tidy message when the heavy ingest extra isn't installed.
+            typer.secho(str(e), fg=typer.colors.YELLOW, err=True)
+            raise typer.Exit(code=1) from None
+        if probe > 0:
+            typer.echo(outcome.render())  # type: ignore[union-attr]
+        else:
+            r = outcome  # type: ignore[assignment]
+            typer.echo(
+                f"ingested {r.videos_ingested} new video(s) across {r.channels} channel(s); "
+                f"skipped {r.videos_skipped_existing} existing, {r.videos_deduped} duplicate(s); "
+                f"whisper used {r.whisper_used} time(s)."
+            )
+    finally:
+        store.close()
 
 
 @app.command()
