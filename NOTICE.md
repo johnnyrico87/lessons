@@ -18,6 +18,17 @@ The product of this tool is a **derived knowledge graph** — structured notes
 In other words: the graph does **not** hold the actual MP3 or full transcript
 data. It holds short, attributed excerpts that point you back to the original.
 
+## The graph is notes
+
+The right way to think about the shipped graph is as **one person's notes** from
+listening to podcasts. Listening to an episode and writing down "this leader did
+X — the lesson was Y," with a pointer to the minute you heard it, is exactly what
+a person does with a notebook. The graph is those notes: short quotes, the
+timestamp they came from, and the connections the listener drew between people
+and ideas. A user who downloads this app receives the maintainer's notes as a
+starting point, and extends them with notes of their own. That is categorically
+different from redistributing the podcast itself.
+
 ## Source material belongs to its creators
 
 - Podcast audio, video, and transcripts are the property of their respective

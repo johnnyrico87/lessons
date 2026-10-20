@@ -378,6 +378,98 @@ class Store:
             (query, limit),
         ).fetchall()
 
+    # --- seed export / import --------------------------------------------
+    # The shipped graph is "the maintainer's notes": short quotes + timestamps +
+    # the connections they drew, exported as diff-friendly JSON (never audio or
+    # full transcripts). First run rebuilds a DB from this so a fresh clone is
+    # populated, not empty. Channels + a thin video row per mention are included
+    # so citations (deep links, host) resolve exactly as in the live graph.
+    SEED_VERSION = 1
+
+    def export_seed(self) -> dict:
+        """Serialize the graph to a JSON-able dict: channels, videos, nodes,
+        edges, mentions, bios. Transcript TEXT is deliberately excluded — the
+        seed ships notes (nodes/quotes), not source transcripts."""
+        def rows(sql: str) -> list[dict]:
+            return [dict(r) for r in self.conn.execute(sql).fetchall()]
+
+        return {
+            "seed_version": self.SEED_VERSION,
+            "channels": rows("SELECT id, handle, url, name FROM channels"),
+            "videos": rows(
+                "SELECT id, channel_id, title, published_at, duration_s, url FROM videos"
+            ),
+            "nodes": rows("SELECT id, type, label, summary, origin FROM nodes"),
+            "edges": rows(
+                "SELECT id, src_node_id, dst_node_id, relation, confidence FROM edges"
+            ),
+            "mentions": rows(
+                "SELECT id, node_id, video_id, timestamp_s, quote FROM mentions"
+            ),
+            "bios": rows(
+                "SELECT id, person_node_id, source, source_url, license, title, "
+                "summary, image_url, image_license, fetched_at FROM bios"
+            ),
+        }
+
+    def import_seed(self, seed: dict) -> dict:
+        """Load a seed dict into THIS (empty) store. Idempotent per row via
+        INSERT OR IGNORE, so re-importing is safe. Returns inserted counts."""
+        c = self.conn
+        counts = {"channels": 0, "videos": 0, "nodes": 0, "edges": 0,
+                  "mentions": 0, "bios": 0}
+        for r in seed.get("channels", []):
+            c.execute("INSERT OR IGNORE INTO channels(id, handle, url, name) VALUES (?,?,?,?)",
+                      (r["id"], r.get("handle"), r.get("url"), r.get("name")))
+            counts["channels"] += 1
+        for r in seed.get("videos", []):
+            c.execute(
+                "INSERT OR IGNORE INTO videos(id, channel_id, title, published_at, "
+                "duration_s, url) VALUES (?,?,?,?,?,?)",
+                (r["id"], r.get("channel_id"), r.get("title"), r.get("published_at"),
+                 r.get("duration_s"), r.get("url")),
+            )
+            counts["videos"] += 1
+        for r in seed.get("nodes", []):
+            c.execute(
+                "INSERT OR IGNORE INTO nodes(id, type, label, summary, origin) "
+                "VALUES (?,?,?,?,?)",
+                (r["id"], r["type"], r["label"], r.get("summary"),
+                 r.get("origin", "podcast")),
+            )
+            counts["nodes"] += 1
+        for r in seed.get("mentions", []):
+            c.execute(
+                "INSERT OR IGNORE INTO mentions(id, node_id, video_id, timestamp_s, quote) "
+                "VALUES (?,?,?,?,?)",
+                (r["id"], r["node_id"], r["video_id"], int(r["timestamp_s"]), r["quote"]),
+            )
+            counts["mentions"] += 1
+        for r in seed.get("edges", []):
+            c.execute(
+                "INSERT OR IGNORE INTO edges(id, src_node_id, dst_node_id, relation, "
+                "confidence) VALUES (?,?,?,?,?)",
+                (r["id"], r["src_node_id"], r["dst_node_id"], r["relation"],
+                 r.get("confidence")),
+            )
+            counts["edges"] += 1
+        for r in seed.get("bios", []):
+            c.execute(
+                "INSERT OR IGNORE INTO bios(id, person_node_id, source, source_url, "
+                "license, title, summary, image_url, image_license, fetched_at) "
+                "VALUES (?,?,?,?,?,?,?,?,?,?)",
+                (r["id"], r["person_node_id"], r["source"], r["source_url"], r["license"],
+                 r.get("title"), r.get("summary"), r.get("image_url"),
+                 r.get("image_license"), r.get("fetched_at")),
+            )
+            counts["bios"] += 1
+        c.commit()
+        return counts
+
+    def is_empty(self) -> bool:
+        """True when the graph has no nodes — the signal for first-run seeding."""
+        return self.conn.execute("SELECT COUNT(*) AS n FROM nodes").fetchone()["n"] == 0
+
     def _check_node_type(self, type: str) -> None:
         if type not in NODE_TYPES:
             raise ValueError(f"unknown node type {type!r}; allowed: {sorted(NODE_TYPES)}")

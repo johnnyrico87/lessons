@@ -241,3 +241,92 @@ def test_old_bios_table_gains_image_columns(tmp_path):
     cols = {r[1] for r in s.conn.execute("PRAGMA table_info(bios)").fetchall()}
     assert "image_url" in cols and "image_license" in cols
     s.close()
+
+
+# --- seed export / import + first-run seeding ------------------------------
+
+def _tiny_graph(s: Store) -> None:
+    s.add_channel("C1", "@TakeOverPod", "https://youtube.com/@TakeOverPod", "Ben Wilson")
+    s.add_video("v1", "C1", "Crowds", "2024-01-01", 341, "https://youtu.be/v1")
+    s.add_transcript("v1", "secret transcript text", "whisper")
+    a = s.add_podcast_node("person", "Le Bon",
+                           mentions=[Mention("v1", 60, "studied crowds")])
+    b = s.add_podcast_node("person", "Hitler",
+                           mentions=[Mention("v1", 900, "spoke his way to power")])
+    s.add_edge(a, b, "cites", 0.8)
+
+
+def test_seed_export_excludes_transcript_text():
+    s = Store.memory()
+    _tiny_graph(s)
+    seed = s.export_seed()
+    assert "transcripts" not in seed                 # notes, not source text
+    assert "secret transcript text" not in __import__("json").dumps(seed)
+    assert len(seed["nodes"]) == 2 and len(seed["edges"]) == 1
+    assert len(seed["mentions"]) == 2
+    s.close()
+
+
+def test_seed_roundtrip_rebuilds_identical_graph():
+    src = Store.memory()
+    _tiny_graph(src)
+    seed = src.export_seed()
+    src.close()
+
+    dst = Store.memory()
+    assert dst.is_empty()
+    counts = dst.import_seed(seed)
+    assert counts["nodes"] == 2 and counts["edges"] == 1
+    assert not dst.is_empty()
+    # citations resolve on the rebuilt graph (deep link + host)
+    nid = dst.conn.execute("SELECT id FROM nodes WHERE label='Le Bon'").fetchone()["id"]
+    cites = dst.cite_node(nid)
+    assert cites and cites[0].host == "Ben Wilson"
+    dst.close()
+
+
+def test_seed_import_is_idempotent():
+    src = Store.memory()
+    _tiny_graph(src)
+    seed = src.export_seed()
+    src.close()
+    dst = Store.memory()
+    dst.import_seed(seed)
+    dst.import_seed(seed)  # second import must not duplicate
+    assert dst.count("nodes") == 2
+    assert dst.count("edges") == 1
+    dst.close()
+
+
+def test_seed_if_empty_only_seeds_empty_db(tmp_path):
+    import json
+
+    from lessons.seed import seed_if_empty
+
+    src = Store.memory()
+    _tiny_graph(src)
+    seed_file = tmp_path / "seed.json"
+    seed_file.write_text(json.dumps(src.export_seed()), encoding="utf-8")
+    src.close()
+
+    s = Store.memory()
+    first = seed_if_empty(s, path=seed_file)
+    assert first and first["nodes"] == 2
+    second = seed_if_empty(s, path=seed_file)   # already populated -> no-op
+    assert second is None
+    s.close()
+
+
+def test_shipped_seed_file_is_valid_and_importable():
+    """The committed seed/lessons-seed.json must load and rebuild a non-empty
+    graph — this is what a fresh clone receives on first run."""
+    from lessons.seed import SEED_PATH, load_seed
+
+    assert SEED_PATH.exists(), "shipped seed file missing"
+    seed = load_seed()
+    assert seed and seed.get("nodes"), "shipped seed has no nodes"
+    s = Store.memory()
+    counts = s.import_seed(seed)
+    assert counts["nodes"] >= 1
+    assert not s.is_empty()
+    s.close()
