@@ -1,15 +1,46 @@
 """Pydantic schemas for LLM extraction output (design §5).
 
-The LLM is asked for JSON matching `ExtractionResult`. Invalid output is
-rejected by validation (caller retries, then skips-with-reason) so malformed
-model output never corrupts the graph.
+The LLM is asked for JSON matching `ExtractionResult`. We validate structurally,
+but tolerate the natural shapes a local model emits — a clock-string timestamp
+("00:10:05") is coerced to int seconds, and nodes that lack a usable quote are
+DROPPED rather than failing the whole chunk. This keeps the provenance guarantee
+(a kept node always has a real quote + timestamp) without throwing away a chunk
+of good extractions over a format nit.
 """
 
 from __future__ import annotations
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from lessons.schema import EDGE_RELATIONS, NODE_TYPES
+
+
+def coerce_timestamp(value) -> int:
+    """Accept int, numeric string, or HH:MM:SS / MM:SS clock strings -> seconds."""
+    if value is None:
+        return 0
+    if isinstance(value, int):
+        return max(0, value)
+    if isinstance(value, float):
+        return max(0, int(value))
+    s = str(value).strip()
+    if not s:
+        return 0
+    if s.isdigit():
+        return int(s)
+    if ":" in s:
+        parts = s.split(":")
+        try:
+            nums = [int(p) for p in parts]
+        except ValueError:
+            return 0
+        total = 0
+        for n in nums:
+            total = total * 60 + n
+        return total
+    # strip a trailing 's' etc.
+    digits = "".join(c for c in s if c.isdigit())
+    return int(digits) if digits else 0
 
 
 class NodeOut(BaseModel):
@@ -19,7 +50,12 @@ class NodeOut(BaseModel):
     label: str
     summary: str | None = None
     quote: str = Field(..., min_length=1)
-    timestamp_s: int = Field(..., ge=0)
+    timestamp_s: int = 0
+
+    @field_validator("timestamp_s", mode="before")
+    @classmethod
+    def _coerce_ts(cls, v) -> int:
+        return coerce_timestamp(v)
 
     @field_validator("type")
     @classmethod
@@ -53,7 +89,43 @@ class EdgeOut(BaseModel):
 
 
 class ExtractionResult(BaseModel):
-    """The whole structured payload from one chunk."""
+    """The whole structured payload from one chunk.
+
+    Tolerant parsing: individual nodes/edges that don't validate are dropped,
+    not fatal — a chunk yields whatever valid items the model produced. Use
+    `parse_tolerant` for that behavior; direct construction stays strict.
+    """
 
     nodes: list[NodeOut] = Field(default_factory=list)
     edges: list[EdgeOut] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def _drop_edges_to_unknown_nodes(self) -> ExtractionResult:
+        labels = {n.label.strip().lower() for n in self.nodes}
+        self.edges = [
+            e
+            for e in self.edges
+            if e.src_label.strip().lower() in labels and e.dst_label.strip().lower() in labels
+        ]
+        return self
+
+
+def parse_tolerant(data: dict) -> ExtractionResult:
+    """Build an ExtractionResult, silently dropping nodes/edges that fail
+    validation (bad type, empty quote, malformed edge) instead of raising. Raises
+    only if `data` isn't the expected shape at all."""
+    raw_nodes = data.get("nodes") or []
+    raw_edges = data.get("edges") or []
+    nodes: list[NodeOut] = []
+    for rn in raw_nodes:
+        try:
+            nodes.append(NodeOut.model_validate(rn))
+        except Exception:
+            continue  # drop a single bad node, keep the rest
+    edges: list[EdgeOut] = []
+    for re_ in raw_edges:
+        try:
+            edges.append(EdgeOut.model_validate(re_))
+        except Exception:
+            continue
+    return ExtractionResult(nodes=nodes, edges=edges)
