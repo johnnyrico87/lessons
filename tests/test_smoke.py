@@ -33,8 +33,8 @@ def test_version_command():
 
 
 def test_pass_stubs_report_not_implemented():
-    # ingest is implemented (Phase 2); extract/enrich/serve remain stubs.
-    for cmd in ("extract", "enrich", "serve"):
+    # ingest + extract are implemented; enrich/serve remain stubs.
+    for cmd in ("enrich", "serve"):
         result = runner.invoke(app, [cmd])
         assert result.exit_code == 0
         assert "not implemented yet" in result.output

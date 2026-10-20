@@ -95,9 +95,32 @@ def ingest(
 
 
 @app.command()
-def extract() -> None:
+def extract(
+    model: str = typer.Option(
+        "llama3.1", "--model", help="Ollama model to use (default local Ollama)."
+    ),
+) -> None:
     """Pass B — turn transcripts into a structured graph with a local LLM."""
-    _todo("extract", "Phase 3")
+    from lessons.extract import Extractor
+    from lessons.providers import OllamaClient
+    from lessons.store import Store
+
+    store = Store(_db_path())
+    try:
+        try:
+            llm = OllamaClient(model=model)
+        except RuntimeError as e:
+            typer.secho(str(e), fg=typer.colors.YELLOW, err=True)
+            raise typer.Exit(code=1) from None
+        r = Extractor(store, llm).extract()
+        typer.echo(
+            f"extracted {r.nodes_added} node(s), {r.edges_added} edge(s) "
+            f"({r.tension_edges} tension) from {r.videos_processed} video(s); "
+            f"skipped {r.videos_skipped_same_version} already at this prompt version, "
+            f"{r.chunks_invalid_skipped} invalid chunk(s)."
+        )
+    finally:
+        store.close()
 
 
 @app.command()

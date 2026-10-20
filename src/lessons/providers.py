@@ -111,3 +111,34 @@ def _upload_date(yyyymmdd: str | None) -> str:
     if not yyyymmdd or len(yyyymmdd) != 8:
         return ""
     return f"{yyyymmdd[0:4]}-{yyyymmdd[4:6]}-{yyyymmdd[6:8]}"
+
+
+class OllamaClient:
+    """Local LLM client for extraction (Pass B). Lazy-imports the ollama client.
+
+    Install with: pip install -e ".[extract]" and have Ollama running locally.
+    """
+
+    def __init__(self, model: str = "llama3.1"):
+        try:
+            import ollama  # type: ignore  # noqa: F401
+        except ImportError as e:
+            raise RuntimeError(
+                "ollama client not installed; pip install -e '.[extract]' "
+                "and run a local Ollama server"
+            ) from e
+        self.model_name = model
+
+    def complete(self, prompt: str, transcript_chunk: str) -> str:
+        import ollama  # type: ignore
+
+        resp = ollama.chat(
+            model=self.model_name,
+            messages=[
+                {"role": "system", "content": prompt},
+                {"role": "user", "content": transcript_chunk},
+            ],
+            format="json",
+            options={"temperature": 0},
+        )
+        return resp["message"]["content"]
