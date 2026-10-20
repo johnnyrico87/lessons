@@ -218,3 +218,56 @@ def test_extract_chunks_on_persisted_line_timestamps(store):
         "SELECT MIN(timestamp_s) AS t FROM mentions"
     ).fetchone()
     assert row["t"] == 300
+
+
+# --- tolerant parsing (local-model robustness) -----------------------------
+
+def test_timestamp_clock_string_coerced():
+    from lessons.extract_schema import coerce_timestamp, parse_tolerant
+    assert coerce_timestamp("00:10:05") == 605
+    assert coerce_timestamp("2:30") == 150
+    assert coerce_timestamp("90") == 90
+    assert coerce_timestamp(42) == 42
+    assert coerce_timestamp("") == 0
+    r = parse_tolerant({"nodes": [
+        {"type": "person", "label": "Musashi", "quote": "a swordsman", "timestamp_s": "00:10:05"}
+    ]})
+    assert r.nodes[0].timestamp_s == 605
+
+
+def test_bad_node_dropped_not_whole_chunk():
+    from lessons.extract_schema import parse_tolerant
+    r = parse_tolerant({"nodes": [
+        {"type": "person", "label": "Good", "quote": "real quote", "timestamp_s": 1},
+        {"type": "person", "label": "NoQuote", "quote": "", "timestamp_s": 2},   # dropped
+        {"type": "widget", "label": "BadType", "quote": "x", "timestamp_s": 3},  # dropped
+    ]})
+    assert [n.label for n in r.nodes] == ["Good"]
+
+
+def test_edges_to_dropped_nodes_are_removed():
+    from lessons.extract_schema import parse_tolerant
+    r = parse_tolerant({
+        "nodes": [{"type": "person", "label": "A", "quote": "q", "timestamp_s": 1}],
+        "edges": [{"src_label": "A", "dst_label": "Ghost", "relation": "cites"}],
+    })
+    assert r.edges == []  # Ghost was never a valid node
+
+
+def test_extractor_salvages_valid_nodes_from_mixed_output(store):
+    import json as _json
+    payload = _json.dumps({"nodes": [
+        {"type": "person", "label": "Musashi", "summary": "swordsman",
+         "quote": "a traveling samurai", "timestamp_s": "00:00:10"},
+        {"type": "person", "label": "DaVinci", "quote": "", "timestamp_s": "00:04:20"},
+    ]})
+
+    class LLM:
+        model_name = "fake"
+        def complete(self, p, c): return payload
+
+    r = Extractor(store, LLM()).extract(["v1"])
+    assert r.nodes_added == 1          # Musashi kept, empty-quote DaVinci dropped
+    assert r.chunks_invalid_skipped == 0
+    ts = store.conn.execute("SELECT timestamp_s FROM mentions").fetchone()["timestamp_s"]
+    assert ts == 10                    # clock-string coerced

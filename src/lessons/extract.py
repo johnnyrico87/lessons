@@ -25,12 +25,10 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Protocol
 
-from pydantic import ValidationError
-
-from lessons.extract_schema import ExtractionResult
+from lessons.extract_schema import ExtractionResult, parse_tolerant
 from lessons.store import Mention, Store
 
-PROMPT_VERSION = "v1"
+PROMPT_VERSION = "v2"
 
 # The extraction prompt. Kept here (mirrors prompts/extract_v1.txt) so the
 # version string and the instruction travel together.
@@ -153,11 +151,25 @@ class Extractor:
         self.store.conn.commit()
 
     def _parse(self, raw: str) -> ExtractionResult | None:
+        """Parse model output tolerantly. Returns a result (possibly with fewer
+        nodes than the model emitted) when at least the JSON shape is valid;
+        None only when no JSON object can be found at all."""
+        text = raw.strip()
+        # Models sometimes wrap JSON in prose or ```json fences — extract the
+        # outermost {...} object.
+        if not text.startswith("{"):
+            start = text.find("{")
+            end = text.rfind("}")
+            if start == -1 or end == -1 or end <= start:
+                return None
+            text = text[start : end + 1]
         try:
-            data = json.loads(raw)
-            return ExtractionResult.model_validate(data)
-        except (json.JSONDecodeError, ValidationError):
+            data = json.loads(text)
+        except json.JSONDecodeError:
             return None
+        if not isinstance(data, dict):
+            return None
+        return parse_tolerant(data)
 
     def extract(self, video_ids: list[str] | None = None) -> ExtractResult:
         result = ExtractResult()
