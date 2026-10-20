@@ -220,3 +220,11 @@ def test_graph_page_served(client):
     r = client.get("/graph")
     assert r.status_code == 200
     assert "cytoscape" in r.text.lower()
+
+
+# --- intent/licensing surfaced in-app --------------------------------------
+
+def test_splash_states_personal_tool_and_no_audio(client):
+    html = client.get("/").text
+    assert "personal research tool" in html.lower()
+    assert "not audio or full transcripts" in html.lower()
