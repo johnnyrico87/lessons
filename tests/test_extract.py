@@ -105,6 +105,36 @@ def test_backstop_skips_already_linked_concept(store):
     assert r.edges_added == 1  # only the model's own edge
 
 
+def test_invalid_relation_target_is_rejected(store):
+    # produced_lesson must point at a lesson/principle, not a person. The model
+    # emitting `person produced_lesson person` is rejected, not persisted.
+    payload = _payload(
+        nodes=[
+            {"type":"person","label":"Host","quote":"q1","timestamp_s":1},
+            {"type":"person","label":"Subject","quote":"q2","timestamp_s":2},
+        ],
+        edges=[{"src_label":"Host","dst_label":"Subject","relation":"produced_lesson"}],
+    )
+    r = Extractor(store, FakeLLM([payload])).extract(["v1"])
+    assert r.rejected_edges == 1
+    assert r.edges_added == 0
+    assert any("rejected" in s for s in r.skips)
+
+
+def test_valid_relation_target_passes(store):
+    # produced_lesson -> lesson is valid and persists.
+    payload = _payload(
+        nodes=[
+            {"type":"person","label":"Subject","quote":"q1","timestamp_s":1},
+            {"type":"lesson","label":"A real lesson","quote":"q2","timestamp_s":2},
+        ],
+        edges=[{"src_label":"Subject","dst_label":"A real lesson","relation":"produced_lesson"}],
+    )
+    r = Extractor(store, FakeLLM([payload])).extract(["v1"])
+    assert r.rejected_edges == 0
+    assert r.edges_added == 1
+
+
 def test_extraction_json_schema_matches_vocabularies():
     from lessons.extract_schema import extraction_json_schema
     from lessons.schema import EDGE_RELATIONS, NODE_TYPES
