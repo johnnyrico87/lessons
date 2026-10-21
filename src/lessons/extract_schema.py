@@ -126,3 +126,47 @@ def parse_tolerant(data: dict) -> ExtractionResult:
         except Exception:
             continue
     return ExtractionResult(nodes=nodes, edges=edges)
+
+
+def extraction_json_schema() -> dict:
+    """JSON Schema for Ollama structured output (the `format` param).
+
+    Grammar-constrains the model so it CANNOT emit a node type or edge relation
+    outside our vocabulary, nor omit the fields we require. This removes the
+    structural garbage a small model otherwise produces (invalid types like
+    'book', missing quote fields). It does NOT fix semantic errors — a wrong
+    attribution or a duplicate/misspelled entity is still possible. Derived from
+    NODE_TYPES / EDGE_RELATIONS so it never drifts from the validation contract.
+    """
+    return {
+        "type": "object",
+        "properties": {
+            "nodes": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "type": {"type": "string", "enum": sorted(NODE_TYPES)},
+                        "label": {"type": "string"},
+                        "summary": {"type": "string"},
+                        "quote": {"type": "string"},
+                        "timestamp_s": {"type": "integer"},
+                    },
+                    "required": ["type", "label", "quote"],
+                },
+            },
+            "edges": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "src_label": {"type": "string"},
+                        "dst_label": {"type": "string"},
+                        "relation": {"type": "string", "enum": sorted(EDGE_RELATIONS)},
+                    },
+                    "required": ["src_label", "dst_label", "relation"],
+                },
+            },
+        },
+        "required": ["nodes", "edges"],
+    }

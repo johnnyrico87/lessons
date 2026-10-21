@@ -207,13 +207,17 @@ class OllamaClient:
     def complete(self, prompt: str, transcript_chunk: str) -> str:
         import ollama  # type: ignore
 
+        from lessons.extract_schema import extraction_json_schema
+
         resp = ollama.chat(
             model=self.model_name,
             messages=[
                 {"role": "system", "content": prompt},
                 {"role": "user", "content": transcript_chunk},
             ],
-            format="json",
+            # Grammar-constrain output to our extraction schema (valid node types,
+            # relations from our enum, required fields present) — not just "json".
+            format=extraction_json_schema(),
             options={"temperature": 0},
         )
         return resp["message"]["content"]

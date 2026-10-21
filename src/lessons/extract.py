@@ -28,7 +28,7 @@ from typing import Protocol
 from lessons.extract_schema import ExtractionResult, parse_tolerant
 from lessons.store import Mention, Store
 
-PROMPT_VERSION = "v3"
+PROMPT_VERSION = "v4"
 
 # The extraction prompt. Kept here (mirrors prompts/extract_v1.txt) so the
 # version string and the instruction travel together.
