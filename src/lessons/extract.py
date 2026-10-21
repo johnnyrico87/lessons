@@ -28,7 +28,7 @@ from typing import Protocol
 from lessons.extract_schema import ExtractionResult, parse_tolerant
 from lessons.store import Mention, Store
 
-PROMPT_VERSION = "v4"
+PROMPT_VERSION = "v5"
 
 # The extraction prompt. Kept here (mirrors prompts/extract_v1.txt) so the
 # version string and the instruction travel together.
@@ -143,6 +143,7 @@ class ExtractResult:
     edges_added: int = 0
     tension_edges: int = 0
     backstop_edges: int = 0
+    rejected_edges: int = 0
     skips: list[str] = field(default_factory=list)
 
 
@@ -259,8 +260,17 @@ class Extractor:
     _BACKSTOP_RELATION = {
         "lesson": "produced_lesson",
         "principle": "applied",
-        "experience": "produced_lesson",
+        "experience": "applied",
         "situation": "addresses_situation",
+    }
+    # Entity-resolution guard: a relation whose TARGET type is fixed. A small
+    # model emits garbage like `person produced_lesson person` or
+    # `person addresses_situation era`; we reject any edge whose destination
+    # type is not in the allowed set, so semantic noise never enters the graph.
+    _RELATION_TARGET_TYPES = {
+        "produced_lesson": {"lesson", "principle"},
+        "addresses_situation": {"situation"},
+        "founded": {"company"},
     }
 
     def _apply(
@@ -293,6 +303,9 @@ class Extractor:
             elif node.type in self._CONCEPT_TYPES:
                 chunk_concept_ids.append((node.type, node_id))
 
+        # id -> node type, so we can validate an edge's target type below.
+        id_to_type = {nid: t for (t, _lbl), nid in label_to_node.items()}
+
         linked_concepts: set[str] = set()
         for edge in parsed.edges:
             src = self._resolve_label(edge.src_label, label_to_node)
@@ -300,6 +313,16 @@ class Extractor:
             if not src or not dst:
                 result.skips.append(
                     f"{video_id}@{chunk.start_s}s: edge {edge.relation} refers to unknown label"
+                )
+                continue
+            # Entity-resolution guard: reject a relation whose target is the
+            # wrong kind of node (e.g. produced_lesson -> a person).
+            allowed = self._RELATION_TARGET_TYPES.get(edge.relation)
+            if allowed is not None and id_to_type.get(dst) not in allowed:
+                result.rejected_edges += 1
+                result.skips.append(
+                    f"{video_id}@{chunk.start_s}s: edge {edge.relation} -> "
+                    f"{id_to_type.get(dst)!r} rejected (target must be {sorted(allowed)})"
                 )
                 continue
             self.store.add_edge(src, dst, edge.relation, edge.confidence)
