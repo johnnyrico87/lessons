@@ -193,21 +193,37 @@ def test_manifest_lists_icons_and_maskable(client):
 
 # --- graph explorer (Cytoscape) --------------------------------------------
 
-def test_graph_api_returns_cytoscape_elements(client):
+def test_graph_api_shows_actors_only_by_default(client):
+    # The fixture graph is concept-only (1 situation + 2 principles, no actors).
+    # The canvas is actors-only, so the default view must return ZERO nodes —
+    # concepts are details for the drawer, not peers on the map.
     ids = client._ids
     data = client.get("/api/graph").json()
-    els = data["elements"]
-    node_els = [e for e in els if "id" in e["data"]]
-    edge_els = [e for e in els if "source" in e["data"]]
-    # 3 nodes (situation + 2 principles), 3 edges incl. the contradicts tension
-    assert len(node_els) == 3
-    assert any(e["data"].get("tension") for e in edge_els)
-    # nodes carry their type for coloring
-    assert all("ntype" in e["data"] for e in node_els)
+    node_els = [e for e in data["elements"] if "id" in e["data"]]
+    assert node_els == []
     assert ids  # fixture ids exist
 
 
+def test_graph_api_includes_person_and_company_actors(client):
+    # Add actors; they SHOULD appear on the default canvas.
+    s = client._store
+    person = s.add_podcast_node(
+        "person", "Cornelius Vanderbilt",
+        mentions=[Mention("v1", 10, "Vanderbilt ran the railroads.")],
+    )
+    company = s.add_podcast_node(
+        "company", "New York Central",
+        mentions=[Mention("v1", 20, "He controlled the New York Central.")],
+    )
+    data = client.get("/api/graph").json()
+    labels = {e["data"]["label"] for e in data["elements"] if "id" in e["data"]}
+    assert "Cornelius Vanderbilt" in labels
+    assert "New York Central" in labels
+    assert person and company
+
+
 def test_graph_api_filters_by_type(client):
+    # An explicit type filter still lets you inspect one concept type on its own.
     data = client.get("/api/graph", params={"node_type": "situation"}).json()
     node_els = [e for e in data["elements"] if "id" in e["data"]]
     assert len(node_els) == 1

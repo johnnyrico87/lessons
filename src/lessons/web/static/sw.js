@@ -5,7 +5,7 @@
      serve stale API data AS IF it were live when the network is available.
 */
 
-const VERSION = "lessons-v3";
+const VERSION = "lessons-v4";
 const SHELL = [
   "/",
   "/graph",

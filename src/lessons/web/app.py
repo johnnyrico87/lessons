@@ -59,11 +59,19 @@ def build_app(store: Store) -> FastAPI:
     ) -> dict:
         """Nodes + edges in Cytoscape elements format, for the graph explorer.
 
-        Each node carries its type (for color/filter) and whether it has a bio.
-        Edges carry their relation (for edge styling, incl. tension coloring).
+        The canvas is ACTORS ONLY — people and companies. Concept nodes
+        (lessons, principles, experiences, situations, eras) are NOT drawn as
+        peers; they are details that belong to an actor and surface in the
+        right-hand detail drawer (/api/node/{id}/full). An explicit node_type
+        filter still lets you inspect one concept type on its own.
         """
-        where = "WHERE type=?" if node_type else ""
-        params: tuple = (node_type, limit) if node_type else (limit,)
+        ACTOR_TYPES = ("person", "company")
+        if node_type:
+            where = "WHERE type=?"
+            params: tuple = (node_type, limit)
+        else:
+            where = "WHERE type IN (?,?)"
+            params = (*ACTOR_TYPES, limit)
         node_rows = store.conn.execute(
             f"SELECT id, type, label FROM nodes {where} LIMIT ?", params
         ).fetchall()
@@ -73,7 +81,7 @@ def build_app(store: Store) -> FastAPI:
             elements.append(
                 {"data": {"id": r["id"], "label": r["label"], "ntype": r["type"]}}
             )
-        # edges only between included nodes
+        # edges only between included (visible) nodes
         for e in store.conn.execute(
             "SELECT src_node_id, dst_node_id, relation FROM edges"
         ).fetchall():
