@@ -28,7 +28,7 @@ from typing import Protocol
 from lessons.extract_schema import ExtractionResult, parse_tolerant
 from lessons.store import Mention, Store
 
-PROMPT_VERSION = "v2"
+PROMPT_VERSION = "v3"
 
 # The extraction prompt. Kept here (mirrors prompts/extract_v1.txt) so the
 # version string and the instruction travel together.
@@ -42,13 +42,37 @@ node types: lesson, principle, person, company, era, experience, situation
 edge relations: cites, applied, founded, aligns, contradicts, contrasts,
                 produced_lesson, addresses_situation
 
+THE MOST IMPORTANT RULE — LINK EVERY CONCEPT TO A PERSON OR COMPANY:
+A lesson, principle, experience, or situation NEVER stands alone. For EVERY
+concept node you emit, you MUST also emit an edge connecting it to the person
+(or company) who produced, embodies, applied, or faced it — using that person's
+EXACT label as it appears in your nodes list. A concept with no edge to a person
+is useless and will be discarded. Prefer these relations:
+  person --produced_lesson--> lesson/principle   (they taught or demonstrated it)
+  person --applied--> lesson/principle            (they put it into practice)
+  person --addresses_situation--> situation       (they faced or responded to it)
+  person --experience--> is wrong; instead: person applied/produced from an experience,
+    so link the experience to the person with `applied` or `produced_lesson`.
+If a concept truly belongs to no named person in this chunk, DROP it rather than
+leaving it unlinked.
+
 Rules:
 - Every node MUST include the exact supporting quote and its timestamp_s.
+- Attribute concepts to the SUBJECT being discussed (the leader), NOT the podcast
+  host/narrator. Do not create a person node for the host or interviewer.
+- Use the person's full real name as the label (e.g. "Gustave Le Bon", not a
+  paraphrase or a role like "Austrian fellow").
 - Prefer SPECIFIC lessons tied to the experience that produced them.
 - When two people take OPPOSING stances on the same situation, emit a
   contradicts/contrasts edge — tensions are as valuable as agreements.
 - Do NOT invent a shared "common thread". Only emit what the text supports.
 - If the chunk has no durable learning, return empty lists.
+
+Edge pattern (do NOT copy these words — they are a shape, not content): for a
+lesson the subject taught, emit person --produced_lesson--> lesson; for a
+situation they faced, person --addresses_situation--> situation; for a principle
+they lived by, person --applied--> principle. Always use the subject's exact
+person label as src_label and the concept's exact label as dst_label.
 """
 
 
@@ -118,6 +142,7 @@ class ExtractResult:
     nodes_added: int = 0
     edges_added: int = 0
     tension_edges: int = 0
+    backstop_edges: int = 0
     skips: list[str] = field(default_factory=list)
 
 
@@ -228,6 +253,16 @@ class Extractor:
                 return parsed
         return None
 
+    # concept types that should always hang off a person/company, plus the
+    # relation used when the backstop auto-links an orphan to the sole subject.
+    _CONCEPT_TYPES = ("lesson", "principle", "experience", "situation")
+    _BACKSTOP_RELATION = {
+        "lesson": "produced_lesson",
+        "principle": "applied",
+        "experience": "produced_lesson",
+        "situation": "addresses_situation",
+    }
+
     def _apply(
         self,
         video_id: str,
@@ -236,6 +271,11 @@ class Extractor:
         label_to_node: dict[tuple[str, str], str],
         result: ExtractResult,
     ) -> None:
+        # Node ids introduced (or re-seen) in THIS chunk, split by role, so the
+        # backstop can reason about this chunk's subject(s) and orphans.
+        chunk_person_ids: list[str] = []
+        chunk_concept_ids: list[str] = []
+
         for node in parsed.nodes:
             ts = node.timestamp_s if node.timestamp_s else chunk.start_s
             node_id = self.store.upsert_node_by_label(
@@ -248,7 +288,12 @@ class Extractor:
             if key not in label_to_node:
                 label_to_node[key] = node_id
                 result.nodes_added += 1
+            if node.type == "person":
+                chunk_person_ids.append(node_id)
+            elif node.type in self._CONCEPT_TYPES:
+                chunk_concept_ids.append((node.type, node_id))
 
+        linked_concepts: set[str] = set()
         for edge in parsed.edges:
             src = self._resolve_label(edge.src_label, label_to_node)
             dst = self._resolve_label(edge.dst_label, label_to_node)
@@ -259,8 +304,25 @@ class Extractor:
                 continue
             self.store.add_edge(src, dst, edge.relation, edge.confidence)
             result.edges_added += 1
+            linked_concepts.add(src)
+            linked_concepts.add(dst)
             if edge.relation in ("contradicts", "contrasts"):
                 result.tension_edges += 1
+
+        # Conservative backstop: a lesson/principle/experience/situation that the
+        # model left UNLINKED is useless (it can never reach the detail drawer).
+        # When the chunk has EXACTLY ONE person, that person is unambiguously the
+        # subject, so attach each orphan concept to them. We DON'T guess when the
+        # chunk names several people — a wrong link is worse than a missing one.
+        if len(chunk_person_ids) == 1:
+            subject = chunk_person_ids[0]
+            for ctype, cid in chunk_concept_ids:
+                if cid in linked_concepts:
+                    continue
+                relation = self._BACKSTOP_RELATION.get(ctype, "produced_lesson")
+                self.store.add_edge(subject, cid, relation, confidence=None)
+                result.edges_added += 1
+                result.backstop_edges += 1
 
     @staticmethod
     def _resolve_label(label: str, label_to_node: dict[tuple[str, str], str]) -> str | None:

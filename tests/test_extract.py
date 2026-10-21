@@ -52,6 +52,59 @@ def store():
 
 # --- schema ---------------------------------------------------------------
 
+def test_backstop_links_orphan_concept_to_sole_person(store):
+    # Model emits a person + a lesson but NO edge between them. With exactly one
+    # person in the chunk, the backstop attaches the lesson to that person.
+    payload = _payload(
+        nodes=[
+            {"type":"person","label":"Rockefeller","quote":"secrecy","timestamp_s":1},
+            {"type":"lesson","label":"Keep plans secret","quote":"kept secret","timestamp_s":2},
+        ],
+        edges=[],  # model forgot to link them
+    )
+    r = Extractor(store, FakeLLM([payload])).extract(["v1"])
+    assert r.backstop_edges == 1
+    assert r.edges_added == 1
+    # the edge connects the person to the lesson with produced_lesson
+    edge = store.conn.execute(
+        "SELECT s.label AS src, d.label AS dst, e.relation FROM edges e "
+        "JOIN nodes s ON s.id=e.src_node_id JOIN nodes d ON d.id=e.dst_node_id"
+    ).fetchone()
+    assert edge["src"] == "Rockefeller"
+    assert edge["dst"] == "Keep plans secret"
+    assert edge["relation"] == "produced_lesson"
+
+
+def test_backstop_does_not_guess_when_multiple_people(store):
+    # Two people in the chunk -> ambiguous subject -> backstop must NOT link,
+    # because a wrong attribution is worse than a missing one.
+    payload = _payload(
+        nodes=[
+            {"type":"person","label":"Rockefeller","quote":"secrecy","timestamp_s":1},
+            {"type":"person","label":"Carnegie","quote":"openness","timestamp_s":2},
+            {"type":"lesson","label":"Keep plans secret","quote":"secret","timestamp_s":3},
+        ],
+        edges=[],
+    )
+    r = Extractor(store, FakeLLM([payload])).extract(["v1"])
+    assert r.backstop_edges == 0
+    assert r.edges_added == 0
+
+
+def test_backstop_skips_already_linked_concept(store):
+    # A concept the model DID link is not double-linked by the backstop.
+    payload = _payload(
+        nodes=[
+            {"type":"person","label":"Rockefeller","quote":"secrecy","timestamp_s":1},
+            {"type":"lesson","label":"Keep plans secret","quote":"kept secret","timestamp_s":2},
+        ],
+        edges=[{"src_label":"Rockefeller","dst_label":"Keep plans secret","relation":"applied"}],
+    )
+    r = Extractor(store, FakeLLM([payload])).extract(["v1"])
+    assert r.backstop_edges == 0
+    assert r.edges_added == 1  # only the model's own edge
+
+
 def test_schema_rejects_unknown_type():
     with pytest.raises(ValidationError):
         ExtractionResult.model_validate(
@@ -245,13 +298,34 @@ def test_bad_node_dropped_not_whole_chunk():
     assert [n.label for n in r.nodes] == ["Good"]
 
 
-def test_edges_to_dropped_nodes_are_removed():
+def test_parser_keeps_edges_for_cross_chunk_resolution():
+    # The parser no longer drops an edge whose endpoint is absent from THIS
+    # chunk — a concept often links to a person from an earlier chunk, so
+    # endpoint resolution is deferred to _apply (cross-chunk label map).
     from lessons.extract_schema import parse_tolerant
     r = parse_tolerant({
         "nodes": [{"type": "person", "label": "A", "quote": "q", "timestamp_s": 1}],
         "edges": [{"src_label": "A", "dst_label": "Ghost", "relation": "cites"}],
     })
-    assert r.edges == []  # Ghost was never a valid node
+    assert len(r.edges) == 1  # kept; _apply decides if it resolves
+
+
+def test_apply_skips_truly_dangling_edge(store):
+    # An edge to a label that never appears in ANY chunk is skipped-with-reason
+    # at apply time, not silently merged.
+    import json as _json
+    payload = _json.dumps({
+        "nodes": [{"type": "person", "label": "A", "quote": "q", "timestamp_s": 1}],
+        "edges": [{"src_label": "A", "dst_label": "Ghost", "relation": "cites"}],
+    })
+
+    class LLM:
+        model_name = "fake"
+        def complete(self, p, c): return payload
+
+    r = Extractor(store, LLM()).extract(["v1"])
+    assert r.edges_added == 0
+    assert any("unknown label" in s for s in r.skips)
 
 
 def test_extractor_salvages_valid_nodes_from_mixed_output(store):

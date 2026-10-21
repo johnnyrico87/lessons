@@ -10,7 +10,7 @@ of good extractions over a format nit.
 
 from __future__ import annotations
 
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, Field, field_validator
 
 from lessons.schema import EDGE_RELATIONS, NODE_TYPES
 
@@ -91,7 +91,7 @@ class EdgeOut(BaseModel):
 class ExtractionResult(BaseModel):
     """The whole structured payload from one chunk.
 
-    Tolerant parsing: individual nodes/edges that don't validate are dropped,
+    Tolerant parsing: individual nodes that don't validate are dropped,
     not fatal — a chunk yields whatever valid items the model produced. Use
     `parse_tolerant` for that behavior; direct construction stays strict.
     """
@@ -99,15 +99,12 @@ class ExtractionResult(BaseModel):
     nodes: list[NodeOut] = Field(default_factory=list)
     edges: list[EdgeOut] = Field(default_factory=list)
 
-    @model_validator(mode="after")
-    def _drop_edges_to_unknown_nodes(self) -> ExtractionResult:
-        labels = {n.label.strip().lower() for n in self.nodes}
-        self.edges = [
-            e
-            for e in self.edges
-            if e.src_label.strip().lower() in labels and e.dst_label.strip().lower() in labels
-        ]
-        return self
+    # NOTE: we deliberately do NOT drop edges whose endpoints are absent from
+    # THIS chunk's node list. A concept extracted in a later chunk often links
+    # to a person introduced in an earlier one; the extractor's _apply step
+    # resolves edge endpoints against the accumulated cross-chunk label map and
+    # skips-with-reason any that still don't resolve. Dropping here would
+    # silently sever every cross-chunk concept->person link.
 
 
 def parse_tolerant(data: dict) -> ExtractionResult:
