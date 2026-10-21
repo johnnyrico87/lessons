@@ -7,6 +7,7 @@
   <meta name="theme-color" content="#0f1115" />
   <link rel="stylesheet" href="/static/styles.css" />
   <script src="https://unpkg.com/cytoscape@3.30.2/dist/cytoscape.min.js"></script>
+  <script src="/static/card.js" defer></script>
   <style>
     .graph-wrap { display:flex; height:calc(100vh - 52px); }
     #cy { flex:1; background:var(--surface); }
@@ -36,7 +37,7 @@
   <div class="graph-wrap">
     <div id="cy"></div>
     <aside class="side" id="side">
-      <p style="color:var(--text-dim);font-size:13px;">Click a node to see its sourced quotes. Edge color: blue = relation, amber = tension (contradicts/contrasts).</p>
+      <p style="color:var(--text-dim);font-size:13px;">Click any node to open its full card — key lessons, quotes, and the leaders it connects to. Edge color: blue = relation, amber = tension (contradicts/contrasts).</p>
     </aside>
   </div>
 
@@ -75,26 +76,7 @@
       style: styleSheet(),
       layout: { name:"cose", animate:false, padding:30 }
     });
-    cy.on("tap","node", (e)=>showNode(e.target.id()));
-  }
-
-  async function showNode(id) {
-    const side = document.getElementById("side");
-    const d = await (await fetch(`/api/node/${id}`)).json();
-    let html = `<div style="font-size:12px;color:var(--text-dim)">${d.ntype||d.type}</div>`+
-               `<h3 style="margin:4px 0 2px;">${esc(d.label)}</h3>`;
-    if (d.summary) html += `<p style="color:var(--text-dim);font-size:13px;">${esc(d.summary)}</p>`;
-    (d.citations||[]).forEach(c=>{
-      html += `<div class="detail-quote">“see source”</div>`+
-        `<div class="detail-cite"><a href="${c.deep_link}" target="_blank" rel="noopener">${c.label||"source"}</a> · ${esc(c.host||"")}${c.episode_title? " — "+esc(c.episode_title):""}</div>`;
-    });
-    if (d.bio) {
-      html += `<div style="margin-top:14px;padding-top:10px;border-top:1px solid var(--hairline);">`+
-        `<div style="font-size:11px;color:var(--tension);border:1px solid var(--tension);display:inline-block;padding:1px 7px;border-radius:999px;">About · external</div>`+
-        (d.bio.summary?`<p style="font-size:13px;color:var(--text-dim);margin:8px 0;">${esc(d.bio.summary)}</p>`:"")+
-        `<div class="detail-cite"><a href="${d.bio.source_url}" target="_blank" rel="noopener">${esc(d.bio.source)} · ${esc(d.bio.license)}</a></div></div>`;
-    }
-    side.innerHTML = html;
+    cy.on("tap","node", (e)=>{ if(window.LeaderCard) LeaderCard.open(e.target.id()); });
   }
 
   function esc(s){return String(s||"").replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[m]));}

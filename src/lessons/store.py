@@ -364,6 +364,115 @@ class Store:
         ).fetchall()
         return [r["label"] for r in rows]
 
+    # --- leader detail card (read) ----------------------------------------
+    # Relation -> how a leader-to-leader connection reads in the card.
+    _CONNECTION_KIND = {
+        "aligns": "aligned",
+        "contradicts": "tension",
+        "contrasts": "tension",
+        "cites": "mentions",
+        "applied": "mentions",
+        "founded": "mentions",
+        "produced_lesson": "mentions",
+        "addresses_situation": "mentions",
+    }
+
+    def node_facts(self, node_id: str) -> list[dict]:
+        """The concept nodes a leader is tied to — the lessons, principles,
+        experiences, situations, companies and eras connected to this person by
+        an edge. One row per connected concept with its best supporting quote,
+        so the card can show "everything captured on the leader" (not just a bio).
+        """
+        rows = self.conn.execute(
+            """SELECT DISTINCT n.id, n.type, n.label, n.summary, e.relation
+               FROM edges e
+               JOIN nodes n ON n.id IN (e.src_node_id, e.dst_node_id)
+               WHERE (e.src_node_id=? OR e.dst_node_id=?)
+                 AND n.id<>? AND n.type<>'person'
+               ORDER BY n.type, n.label""",
+            (node_id, node_id, node_id),
+        ).fetchall()
+        facts: list[dict] = []
+        for r in rows:
+            quote_row = self.conn.execute(
+                "SELECT quote, timestamp_s FROM mentions WHERE node_id=? "
+                "ORDER BY length(quote) DESC LIMIT 1",
+                (r["id"],),
+            ).fetchone()
+            facts.append(
+                {
+                    "id": r["id"],
+                    "type": r["type"],
+                    "label": r["label"],
+                    "summary": r["summary"],
+                    "relation": r["relation"],
+                    "quote": quote_row["quote"] if quote_row else None,
+                    "timestamp_s": quote_row["timestamp_s"] if quote_row else None,
+                }
+            )
+        return facts
+
+    def leader_connections(self, node_id: str) -> list[dict]:
+        """Other PERSON nodes this leader is connected to, for the card's
+        "connected leaders" row. Two kinds of link:
+
+          * DIRECT   — a person->person edge (aligns / contradicts / cites / ...).
+          * SHARED   — both people connect to the SAME concept node (a shared
+                       experience or situation), i.e. a 2-hop A->concept<-B link.
+
+        Each connection carries the other leader's id, label, image (if a bio
+        has one) and a kind tag (aligned / tension / mentions / shared) so the UI
+        can group and color them. Deduped, keeping the strongest kind."""
+        best: dict[str, dict] = {}
+
+        def _offer(pid: str, label: str, kind: str, via: str | None) -> None:
+            # precedence: tension > aligned > shared > mentions
+            rank = {"tension": 3, "aligned": 2, "shared": 1, "mentions": 0}
+            prev = best.get(pid)
+            if prev is None or rank[kind] > rank[prev["kind"]]:
+                img = self.bio_for(pid)
+                best[pid] = {
+                    "id": pid,
+                    "label": label,
+                    "kind": kind,
+                    "via": via,
+                    "image_url": (img or {}).get("image_url"),
+                }
+
+        # DIRECT person<->person edges
+        direct = self.conn.execute(
+            """SELECT e.relation,
+                      CASE WHEN e.src_node_id=?
+                           THEN e.dst_node_id ELSE e.src_node_id END AS other_id
+               FROM edges e
+               WHERE (e.src_node_id=? OR e.dst_node_id=?)""",
+            (node_id, node_id, node_id),
+        ).fetchall()
+        for d in direct:
+            other = self.conn.execute(
+                "SELECT id, type, label FROM nodes WHERE id=? AND type='person'",
+                (d["other_id"],),
+            ).fetchone()
+            if other and other["id"] != node_id:
+                kind = self._CONNECTION_KIND.get(d["relation"], "mentions")
+                _offer(other["id"], other["label"], kind, d["relation"])
+
+        # SHARED concept: A -> concept <- B (experience/situation/company/...)
+        shared = self.conn.execute(
+            """SELECT DISTINCT p.id AS pid, p.label AS plabel, c.label AS via
+               FROM edges e1
+               JOIN nodes c ON c.id IN (e1.src_node_id, e1.dst_node_id) AND c.type<>'person'
+               JOIN edges e2 ON c.id IN (e2.src_node_id, e2.dst_node_id)
+               JOIN nodes p ON p.id IN (e2.src_node_id, e2.dst_node_id) AND p.type='person'
+               WHERE (e1.src_node_id=? OR e1.dst_node_id=?) AND p.id<>?""",
+            (node_id, node_id, node_id),
+        ).fetchall()
+        for s in shared:
+            _offer(s["pid"], s["plabel"], "shared", s["via"])
+
+        order = {"tension": 0, "aligned": 1, "shared": 2, "mentions": 3}
+        return sorted(best.values(), key=lambda c: (order[c["kind"]], c["label"]))
+
     # --- reads / counts ---------------------------------------------------
     def count(self, table: str) -> int:
         allowed = {"channels", "videos", "transcripts", "nodes", "edges", "mentions", "bios"}

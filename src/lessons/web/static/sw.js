@@ -5,11 +5,13 @@
      serve stale API data AS IF it were live when the network is available.
 */
 
-const VERSION = "lessons-v1";
+const VERSION = "lessons-v2";
 const SHELL = [
   "/",
+  "/graph",
   "/static/styles.css",
   "/static/app.js",
+  "/static/card.js",
   "/manifest.webmanifest",
   "/static/icon-192.png",
   "/static/icon-512.png",

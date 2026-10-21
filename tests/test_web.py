@@ -228,3 +228,110 @@ def test_splash_states_personal_tool_and_no_audio(client):
     html = client.get("/").text
     assert "personal research tool" in html.lower()
     assert "not audio or full transcripts" in html.lower()
+
+
+# --- leader detail card (/api/node/{id}/full) ------------------------------
+
+@pytest.fixture
+def card_client():
+    """A graph with two people who clash directly AND share an experience, plus
+    a lesson tied to one of them — enough to exercise facts + all connection
+    kinds."""
+    s = Store.memory()
+    s.add_channel("C1", "@TakeOverPod", "https://youtube.com/@TakeOverPod", "Ben Wilson")
+    s.add_video("v1", "C1", "The Crowd Whisperer", "2024-02-02", 3600, "https://youtu.be/v1")
+    s.add_transcript("v1", "Le Bon and Hitler on crowds.", "whisper")
+
+    le_bon = s.add_podcast_node(
+        "person", "Gustave Le Bon",
+        mentions=[Mention("v1", 60, "Le Bon studied the psychology of crowds.")],
+    )
+    hitler = s.add_podcast_node(
+        "person", "Adolf Hitler",
+        mentions=[Mention("v1", 900, "Hitler spoke his way into power.")],
+    )
+    musashi = s.add_podcast_node(
+        "person", "Miyamoto Musashi",
+        mentions=[Mention("v1", 1800, "Musashi, the undefeated samurai.")],
+    )
+    crowds = s.add_podcast_node(
+        "situation", "moving a crowd to act",
+        mentions=[Mention("v1", 120, "how to move a crowd")],
+    )
+    lesson = s.add_podcast_node(
+        "lesson", "speeches move people more than writing",
+        mentions=[Mention("v1", 300, "great movements owe their growth to great speakers")],
+    )
+    # direct tension + a mentions edge
+    s.add_edge(le_bon, hitler, "contradicts")
+    s.add_edge(musashi, le_bon, "cites")
+    # shared experience: both Le Bon and Hitler connect to the 'crowds' situation
+    s.add_edge(le_bon, crowds, "addresses_situation")
+    s.add_edge(hitler, crowds, "addresses_situation")
+    # a concept fact tied to Le Bon
+    s.add_edge(le_bon, lesson, "produced_lesson")
+
+    c = TestClient(build_app(s))
+    c._store = s
+    c._ids = {"le_bon": le_bon, "hitler": hitler, "musashi": musashi,
+              "crowds": crowds, "lesson": lesson}
+    yield c
+    s.close()
+
+
+def test_full_card_includes_facts(card_client):
+    data = card_client.get(f"/api/node/{card_client._ids['le_bon']}/full").json()
+    assert data["type"] == "person"
+    fact_labels = {(f["type"], f["label"]) for f in data["facts"]}
+    assert ("lesson", "speeches move people more than writing") in fact_labels
+    assert ("situation", "moving a crowd to act") in fact_labels
+    # facts carry a supporting quote
+    lesson_fact = next(f for f in data["facts"] if f["type"] == "lesson")
+    assert lesson_fact["quote"]
+
+
+def test_full_card_direct_tension_connection(card_client):
+    data = card_client.get(f"/api/node/{card_client._ids['le_bon']}/full").json()
+    conns = {c["label"]: c for c in data["connections"]}
+    assert conns["Adolf Hitler"]["kind"] == "tension"       # direct contradicts
+    assert conns["Miyamoto Musashi"]["kind"] == "mentions"  # cites edge
+
+
+def test_full_card_shared_experience_connection(card_client):
+    # Hitler connects to Le Bon only via the shared 'crowds' situation + a direct
+    # contradicts edge; the direct tension should win precedence over shared.
+    data = card_client.get(f"/api/node/{card_client._ids['hitler']}/full").json()
+    conns = {c["label"]: c for c in data["connections"]}
+    assert "Gustave Le Bon" in conns
+    assert conns["Gustave Le Bon"]["kind"] == "tension"
+
+
+def test_full_card_shared_only_when_no_direct_edge(card_client):
+    # Musashi shares nothing with Hitler directly; add a 3rd person who ONLY
+    # shares the crowds situation, to prove the pure-shared path.
+    s = card_client._store
+    napoleon = s.add_podcast_node(
+        "person", "Napoleon",
+        mentions=[Mention("v1", 2000, "Napoleon understood crowds.")],
+    )
+    s.add_edge(napoleon, card_client._ids["crowds"], "addresses_situation")
+    data = card_client.get(f"/api/node/{napoleon}/full").json()
+    conns = {c["label"]: c for c in data["connections"]}
+    # Le Bon and Hitler both touch 'crowds', so both appear as shared
+    assert conns["Gustave Le Bon"]["kind"] == "shared"
+    assert conns["Gustave Le Bon"]["via"] == "moving a crowd to act"
+
+
+def test_full_card_non_person_has_no_connections(card_client):
+    data = card_client.get(f"/api/node/{card_client._ids['lesson']}/full").json()
+    assert data["connections"] == []
+
+
+def test_full_card_404(card_client):
+    assert card_client.get("/api/node/nope/full").status_code == 404
+
+
+def test_card_js_served(card_client):
+    r = card_client.get("/static/card.js")
+    assert r.status_code == 200
+    assert "LeaderCard" in r.text

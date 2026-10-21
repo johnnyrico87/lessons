@@ -223,6 +223,85 @@ html, body {
 
 .results-empty { color: var(--text-dim); text-align: center; padding: 40px 0; }
 
+/* ---- Leader detail card (card.js) ---- */
+.lc-overlay {
+  position: fixed; inset: 0; z-index: 1000;
+  background: rgba(0,0,0,0.55);
+  display: flex; align-items: flex-start; justify-content: center;
+  padding: 5vh 16px; overflow-y: auto;
+}
+.lc-card {
+  position: relative;
+  width: 100%; max-width: 560px;
+  background: var(--surface); color: var(--text);
+  border: 1px solid var(--hairline); border-radius: var(--radius);
+  padding: 24px; max-height: 90vh; overflow-y: auto;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.4);
+}
+.lc-close {
+  position: absolute; top: 12px; right: 14px;
+  background: transparent; border: none; cursor: pointer;
+  color: var(--text-dim); font-size: 24px; line-height: 1;
+}
+.lc-close:hover { color: var(--text); }
+.lc-loading { color: var(--text-dim); }
+
+.lc-head { display: flex; gap: 16px; align-items: flex-start; }
+.lc-avatar {
+  width: 64px; height: 64px; border-radius: 50%;
+  object-fit: cover; flex: 0 0 64px;
+  background: var(--surface-2); border: 1px solid var(--hairline);
+  display: inline-flex; align-items: center; justify-content: center;
+  color: var(--text-dim); font-weight: 600; font-size: 20px;
+}
+.lc-kind { font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-dim); }
+.lc-name { margin: 2px 0 4px; font-size: 22px; color: var(--text); }
+.lc-summary { margin: 0; color: var(--text-dim); font-size: 14px; line-height: 1.5; }
+
+.lc-section { margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--hairline); }
+.lc-h3 { margin: 0 0 10px; font-size: 13px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-dim); }
+
+.lc-badge {
+  display: inline-block; font-size: 11px; color: var(--tension);
+  border: 1px solid var(--tension); padding: 1px 8px; border-radius: 999px;
+}
+.lc-bio { margin: 10px 0 6px; font-size: 14px; line-height: 1.55; color: var(--text); }
+.lc-src, .lc-cite a { color: var(--accent); text-decoration: none; font-size: 13px; }
+.lc-src:hover, .lc-cite a:hover { text-decoration: underline; }
+
+.lc-cite { display: flex; gap: 10px; align-items: baseline; padding: 5px 0; flex-wrap: wrap; }
+.lc-cite-meta { color: var(--text-dim); font-size: 12px; }
+
+.lc-facts { margin-bottom: 12px; }
+.lc-facts-label { font-size: 12px; color: var(--accent); margin-bottom: 4px; }
+.lc-fact { font-size: 13px; color: var(--text); padding: 3px 0; line-height: 1.5; }
+.lc-fact-rel {
+  font-size: 10px; text-transform: uppercase; letter-spacing: 0.04em;
+  color: var(--text-dim); border: 1px solid var(--hairline);
+  padding: 1px 6px; border-radius: 999px; margin-right: 4px;
+}
+.lc-fact-quote { color: var(--quote); font-style: italic; }
+
+.lc-conn-group { margin-bottom: 14px; }
+.lc-conn-label { font-size: 12px; margin-bottom: 8px; }
+.lc-conn-row { display: flex; flex-wrap: wrap; gap: 14px; }
+.lc-conn {
+  display: flex; flex-direction: column; align-items: center; gap: 6px;
+  width: 76px; background: transparent; border: none; cursor: pointer;
+  color: var(--text); font: inherit;
+}
+.lc-conn-img {
+  width: 52px; height: 52px; border-radius: 50%; object-fit: cover;
+  background: var(--surface-2); border: 2px solid var(--hairline);
+  display: inline-flex; align-items: center; justify-content: center;
+  color: var(--text-dim); font-weight: 600; transition: border-color 0.15s;
+}
+.lc-conn:hover .lc-conn-img { border-color: var(--accent); }
+.lc-conn-name { font-size: 11px; text-align: center; line-height: 1.25; color: var(--text-dim); }
+.lc-conn:hover .lc-conn-name { color: var(--text); }
+.lc-empty { color: var(--text-dim); font-size: 13px; }
+
+
 @media (max-width: 640px) {
   .hero-title { font-size: 22px; }
   .card { padding: 18px; }

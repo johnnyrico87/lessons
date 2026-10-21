@@ -87,6 +87,15 @@ async function loadSplash() {
         ? ` · <span class="chip-quote">“${escapeHtml(trunc(el.quote, 44))}”</span>`
         : "";
       chip.innerHTML = `${avatar}${escapeHtml(el.label)}${quote}`;
+      // clicking a leader opens the full card (resolved by label -> node id)
+      chip.style.cursor = "pointer";
+      chip.setAttribute("role", "button");
+      chip.setAttribute("tabindex", "0");
+      const open = () => { if (window.LeaderCard) LeaderCard.openByLabel(el.label); };
+      chip.addEventListener("click", open);
+      chip.addEventListener("keydown", (ev) => {
+        if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); open(); }
+      });
       // scatter around the edges, away from the centered hero
       const angle = (i / n) * 2 * Math.PI;
       const top = 50 + 38 * Math.sin(angle);
