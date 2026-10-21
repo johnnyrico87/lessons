@@ -105,6 +105,23 @@ def test_backstop_skips_already_linked_concept(store):
     assert r.edges_added == 1  # only the model's own edge
 
 
+def test_extraction_json_schema_matches_vocabularies():
+    from lessons.extract_schema import extraction_json_schema
+    from lessons.schema import EDGE_RELATIONS, NODE_TYPES
+
+    schema = extraction_json_schema()
+    node_enum = schema["properties"]["nodes"]["items"]["properties"]["type"]["enum"]
+    edge_enum = schema["properties"]["edges"]["items"]["properties"]["relation"]["enum"]
+    # the grammar enums are exactly our vocabularies — no drift
+    assert set(node_enum) == set(NODE_TYPES)
+    assert set(edge_enum) == set(EDGE_RELATIONS)
+    # a node must carry its quote; an edge must name both endpoints + relation
+    assert "quote" in schema["properties"]["nodes"]["items"]["required"]
+    assert set(schema["properties"]["edges"]["items"]["required"]) == {
+        "src_label", "dst_label", "relation",
+    }
+
+
 def test_schema_rejects_unknown_type():
     with pytest.raises(ValidationError):
         ExtractionResult.model_validate(
