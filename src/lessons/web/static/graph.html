@@ -10,20 +10,21 @@
   <script src="/static/card.js" defer></script>
   <style>
     .graph-wrap { display:flex; height:calc(100vh - 52px); }
-    #cy { flex:1; background:var(--surface); }
-    .side {
-      width:320px; border-left:1px solid var(--hairline);
-      padding:18px; overflow-y:auto; background:var(--surface);
-    }
+    #cy { flex:1; background:var(--surface); transition:margin-right 0.2s ease; }
+    /* when the detail rail is open, dock the graph beside it instead of under it */
+    body.rail-open #cy { margin-right:380px; }
+    @media (max-width:820px){ body.rail-open #cy { margin-right:0; } }
+    @media (prefers-reduced-motion: reduce){ #cy { transition:none; } }
     .filters { display:flex; gap:6px; flex-wrap:wrap; padding:12px 18px; border-bottom:1px solid var(--hairline); }
     .filters button {
       font:inherit; font-size:12px; padding:5px 10px; border-radius:999px;
       border:1px solid var(--hairline); background:transparent; color:var(--text-dim); cursor:pointer;
     }
     .filters button.active { border-color:var(--accent); color:var(--accent); }
-    .detail-quote { color:var(--quote); font-size:15px; line-height:1.5; margin:8px 0; }
-    .detail-cite { font-size:12px; color:var(--text-dim); padding-top:8px; border-top:1px solid var(--hairline); }
-    .detail-cite a { color:var(--accent); text-decoration:none; }
+    .graph-hint {
+      position:fixed; left:18px; bottom:16px; max-width:320px; z-index:5;
+      color:var(--text-dim); font-size:12px; line-height:1.5; pointer-events:none;
+    }
   </style>
 </head>
 <body>
@@ -36,10 +37,8 @@
   <div class="filters" id="filters"></div>
   <div class="graph-wrap">
     <div id="cy"></div>
-    <aside class="side" id="side">
-      <p style="color:var(--text-dim);font-size:13px;">Click any node to open its full card — key lessons, quotes, and the leaders it connects to. Edge color: blue = relation, amber = tension (contradicts/contrasts).</p>
-    </aside>
   </div>
+  <p class="graph-hint">Click any node to open its full detail in the right panel — key lessons, quotes, and the leaders it connects to. Edge color: blue = relation, amber = tension.</p>
 
   <script>
   const TYPES = ["all","person","company","lesson","principle","experience","situation","era"];
@@ -93,6 +92,14 @@
 
   buildFilters();
   loadGraph("all");
+
+  // When the detail rail opens/closes the #cy canvas resizes (margin-right
+  // transition). Tell Cytoscape to re-fit so nodes stay centered, not clipped.
+  const railObserver = new MutationObserver(() => {
+    if (!cy) return;
+    setTimeout(() => { cy.resize(); cy.fit(undefined, 40); }, 240);
+  });
+  railObserver.observe(document.body, { attributes: true, attributeFilter: ["class"] });
   </script>
 </body>
 </html>

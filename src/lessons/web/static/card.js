@@ -1,12 +1,13 @@
-// Shared leader detail card (Pass C). Opened from the splash leaders and from
-// the graph nodes. One modal overlay, fetched from /api/node/{id}/full:
+// Shared detail panel. Opened from the splash leaders and from the graph nodes.
+// A docked RIGHT-SIDE RAIL (not a centered modal) so it stays open while you
+// keep exploring the graph. Fetched from /api/node/{id}/full:
 //   * header  — image + name + external bio summary (badged)
 //   * key info — node summary + the timestamped quotes (deep links)
-//   * facts    — lessons / principles / experiences / situations tied to the leader
+//   * facts    — lessons / principles / experiences / situations tied to the person/org
 //   * connected leaders — clickable images of other people connected in the
 //     transcript (aligned / in tension / shared experience / mentions)
 //
-// Clicking a connected leader loads THAT leader's card in place, so you can hop
+// Clicking a connected leader loads THAT entity in the SAME rail, so you can hop
 // Musk -> someone he aligns with -> their tensions, etc.
 
 (function () {
@@ -43,29 +44,32 @@
              : `${m}:${String(sec).padStart(2, "0")}`;
   }
 
-  function ensureOverlay() {
-    let ov = document.getElementById("leader-card-overlay");
-    if (ov) return ov;
-    ov = document.createElement("div");
-    ov.id = "leader-card-overlay";
-    ov.className = "lc-overlay";
-    ov.hidden = true;
-    ov.innerHTML = `<div class="lc-card" role="dialog" aria-modal="true" aria-label="Leader detail">
-      <button class="lc-close" aria-label="Close">×</button>
-      <div class="lc-body"></div>
-    </div>`;
-    document.body.appendChild(ov);
-    ov.addEventListener("click", (e) => { if (e.target === ov) closeCard(); });
-    ov.querySelector(".lc-close").addEventListener("click", closeCard);
+  function ensureRail() {
+    let rail = document.getElementById("detail-rail");
+    if (rail) return rail;
+    rail = document.createElement("aside");
+    rail.id = "detail-rail";
+    rail.className = "detail-rail";
+    rail.setAttribute("aria-label", "Detail panel");
+    rail.hidden = true;
+    rail.innerHTML = `<button class="lc-close" aria-label="Close panel">×</button>
+      <div class="lc-body"></div>`;
+    document.body.appendChild(rail);
+    rail.querySelector(".lc-close").addEventListener("click", closeCard);
     document.addEventListener("keydown", (e) => {
-      if (e.key === "Escape" && !ov.hidden) closeCard();
+      if (e.key === "Escape" && !rail.hidden) closeCard();
     });
-    return ov;
+    return rail;
   }
 
   function closeCard() {
-    const ov = document.getElementById("leader-card-overlay");
-    if (ov) ov.hidden = true;
+    const rail = document.getElementById("detail-rail");
+    if (rail) {
+      rail.classList.remove("open");
+      // let the slide-out transition finish before hiding
+      setTimeout(() => { if (!rail.classList.contains("open")) rail.hidden = true; }, 220);
+    }
+    document.body.classList.remove("rail-open");
   }
 
   function avatar(imageUrl, label, cls) {
@@ -154,19 +158,23 @@
   }
 
   async function openCard(nodeId) {
-    const ov = ensureOverlay();
-    const body = ov.querySelector(".lc-body");
+    const rail = ensureRail();
+    const body = rail.querySelector(".lc-body");
     body.innerHTML = `<p class="lc-loading">Loading…</p>`;
-    ov.hidden = false;
+    rail.hidden = false;
+    // force reflow so the slide-in transition runs even on first open
+    void rail.offsetWidth;
+    rail.classList.add("open");
+    document.body.classList.add("rail-open");
     try {
       const d = await (await fetch(`/api/node/${encodeURIComponent(nodeId)}/full`)).json();
       body.innerHTML = renderCard(d);
       body.querySelectorAll(".lc-conn").forEach((btn) => {
         btn.addEventListener("click", () => openCard(btn.getAttribute("data-id")));
       });
-      ov.querySelector(".lc-card").scrollTop = 0;
+      body.scrollTop = 0;
     } catch (e) {
-      body.innerHTML = `<p class="lc-empty">Could not load this leader.</p>`;
+      body.innerHTML = `<p class="lc-empty">Could not load this entity.</p>`;
     }
   }
 
