@@ -38,10 +38,11 @@
   <div class="graph-wrap">
     <div id="cy"></div>
   </div>
-  <p class="graph-hint">Click any node to open its full detail in the right panel — key lessons, quotes, and the leaders it connects to. Edge color: blue = relation, amber = tension.</p>
+  <p class="graph-hint">The map shows people and companies. Click one to open its full detail — lessons, principles, situations, quotes, and who it connects to — in the right panel. Edge color: blue = relation, amber = tension.</p>
 
   <script>
-  const TYPES = ["all","person","company","lesson","principle","experience","situation","era"];
+  // Canvas shows ACTORS only (people + companies). Concepts live in the drawer.
+  const TYPES = ["all","person","company"];
   const TYPE_COLOR = {
     person:"#7aa2f7", company:"#9ece6a", lesson:"#e0af68", principle:"#bb9af7",
     experience:"#7dcfff", situation:"#f7768e", era:"#9aa3b2"
