@@ -44,6 +44,53 @@
              : `${m}:${String(sec).padStart(2, "0")}`;
   }
 
+  // Build the inline media player markup for an embed descriptor.
+  //   youtube -> privacy-friendly iframe seeked with ?start=<s>
+  //   audio   -> <audio controls> seeked client-side to start_s on load
+  // Returns "" when there is nothing playable (caller shows a plain note).
+  function playerHtml(embed) {
+    if (!embed) return "";
+    if (embed.type === "youtube") {
+      return `<div class="lc-player"><iframe
+        src="${esc(embed.src)}"
+        title="Embedded clip"
+        frameborder="0" loading="lazy"
+        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+        referrerpolicy="strict-origin-when-cross-origin"
+        allowfullscreen></iframe></div>`;
+    }
+    if (embed.type === "audio") {
+      const start = parseInt(embed.start_s || 0, 10);
+      // #t=<s> media fragment seeks most browsers; the onloadedmetadata hook is
+      // a belt-and-braces fallback for those that ignore the fragment.
+      return `<div class="lc-player lc-player-audio"><audio controls preload="metadata"
+        src="${esc(embed.src)}#t=${start}"
+        data-start="${start}"
+        onloadedmetadata="if(this.currentTime<${start}-1){try{this.currentTime=${start}}catch(e){}}"></audio>
+        <span class="lc-player-note">Audio · jumps to ${esc(fmtTs(start))}</span></div>`;
+    }
+    return "";
+  }
+
+  // Toggle an inline player beneath a clicked quote/timestamp. One open at a
+  // time inside the rail; clicking the same trigger again closes it.
+  function togglePlayer(trigger, embed, deepLink) {
+    const existing = trigger.parentElement.querySelector(".lc-player");
+    const wasOpen = !!existing;
+    // close any other open player in the rail
+    const rail = document.getElementById("detail-rail");
+    if (rail) rail.querySelectorAll(".lc-player").forEach((p) => p.remove());
+    if (wasOpen) return;
+    const markup = playerHtml(embed);
+    if (markup) {
+      trigger.insertAdjacentHTML("afterend", markup);
+      const p = trigger.parentElement.querySelector(".lc-player");
+      if (p) p.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    } else if (deepLink) {
+      window.open(deepLink, "_blank", "noopener");
+    }
+  }
+
   function ensureRail() {
     let rail = document.getElementById("detail-rail");
     if (rail) return rail;
@@ -100,14 +147,17 @@
       </section>`;
     }
 
-    // Key quotes (timestamped deep links)
+    // Key quotes (timestamped — click to play inline at the moment)
     const cites = d.citations || [];
     if (cites.length) {
       html += `<section class="lc-section"><h3 class="lc-h3">In their words</h3>`;
-      cites.slice(0, 6).forEach((c) => {
+      cites.slice(0, 6).forEach((c, i) => {
+        const playable = c.embed || c.deep_link;
+        const cls = playable ? "lc-cite-play" : "lc-cite-noplay";
+        const meta = `${esc(c.host || "")}${c.episode_title ? " — " + esc(c.episode_title) : ""}`;
         html += `<div class="lc-cite">
-          <a href="${esc(c.deep_link)}" target="_blank" rel="noopener">▶ ${esc(fmtTs(c.timestamp_s))}</a>
-          <span class="lc-cite-meta">${esc(c.host || "")}${c.episode_title ? " — " + esc(c.episode_title) : ""}</span>
+          <button type="button" class="${cls}" data-cite="${i}"${playable ? "" : " disabled"}>▶ ${esc(fmtTs(c.timestamp_s))}</button>
+          <span class="lc-cite-meta">${meta}</span>
         </div>`;
       });
       html += `</section>`;
@@ -123,7 +173,15 @@
         if (!byType[t]) return;
         html += `<div class="lc-facts"><div class="lc-facts-label">${FACT_LABEL[t]}</div>`;
         byType[t].forEach((f) => {
-          const q = f.quote ? `<span class="lc-fact-quote">“${esc(f.quote)}”</span>` : "";
+          let q = "";
+          if (f.quote) {
+            const idx = facts.indexOf(f);
+            const playable = f.embed;
+            const quoteHtml = `“${esc(f.quote)}”`;
+            q = playable
+              ? `<button type="button" class="lc-fact-quote lc-fact-play" data-fact="${idx}" title="Play at ${esc(fmtTs(f.timestamp_s))}">${quoteHtml} <span class="lc-fact-ts">▶ ${esc(fmtTs(f.timestamp_s))}</span></button>`
+              : `<span class="lc-fact-quote">${quoteHtml}</span>`;
+          }
           html += `<div class="lc-fact"><span class="lc-fact-rel">${esc(f.relation)}</span> ${esc(f.label)} ${q}</div>`;
         });
         html += `</div>`;
@@ -171,6 +229,20 @@
       body.innerHTML = renderCard(d);
       body.querySelectorAll(".lc-conn").forEach((btn) => {
         btn.addEventListener("click", () => openCard(btn.getAttribute("data-id")));
+      });
+      // Clickable citation timestamps -> inline player at the moment
+      const cites = d.citations || [];
+      body.querySelectorAll("[data-cite]").forEach((btn) => {
+        const c = cites[parseInt(btn.getAttribute("data-cite"), 10)];
+        if (!c) return;
+        btn.addEventListener("click", () => togglePlayer(btn, c.embed, c.deep_link));
+      });
+      // Clickable fact quotes -> inline player at the moment
+      const facts = d.facts || [];
+      body.querySelectorAll("[data-fact]").forEach((btn) => {
+        const f = facts[parseInt(btn.getAttribute("data-fact"), 10)];
+        if (!f) return;
+        btn.addEventListener("click", () => togglePlayer(btn, f.embed, (f.embed && f.embed.type === "youtube") ? `https://youtu.be/${f.embed.video_id}?t=${f.embed.start_s}` : null));
       });
       body.scrollTop = 0;
     } catch (e) {

@@ -283,6 +283,34 @@ html, body {
 }
 .lc-fact-quote { color: var(--quote); font-style: italic; }
 
+/* Clickable play triggers — quote/timestamp opens an inline player */
+.lc-cite-play, .lc-cite-noplay {
+  background: transparent; border: none; cursor: pointer; font: inherit;
+  color: var(--accent); font-size: 13px; padding: 0; text-align: left;
+}
+.lc-cite-play:hover { text-decoration: underline; }
+.lc-cite-noplay { color: var(--text-dim); cursor: default; }
+.lc-fact-play {
+  background: transparent; border: none; cursor: pointer; font: inherit;
+  color: var(--quote); font-style: italic; padding: 0; text-align: left;
+  display: inline;
+}
+.lc-fact-play:hover { text-decoration: underline; }
+.lc-fact-ts {
+  font-style: normal; color: var(--accent); font-size: 11px;
+  white-space: nowrap; margin-left: 4px;
+}
+
+/* Inline media player (YouTube iframe or audio), docked under its quote */
+.lc-player { margin: 8px 0 4px; width: 100%; }
+.lc-player iframe {
+  width: 100%; aspect-ratio: 16 / 9; border: 0; border-radius: 8px;
+  background: #000;
+}
+.lc-player-audio { display: flex; flex-direction: column; gap: 4px; }
+.lc-player-audio audio { width: 100%; }
+.lc-player-note { color: var(--text-dim); font-size: 11px; }
+
 .lc-conn-group { margin-bottom: 14px; }
 .lc-conn-label { font-size: 12px; margin-bottom: 8px; }
 .lc-conn-row { display: flex; flex-wrap: wrap; gap: 14px; }

@@ -21,6 +21,7 @@ from lessons.citations import (
     ExternalCitation,
     PodcastCitation,
     UncitableNodeError,
+    media_embed,
 )
 from lessons.schema import (
     EDGE_RELATIONS,
@@ -405,10 +406,17 @@ class Store:
         facts: list[dict] = []
         for r in rows:
             quote_row = self.conn.execute(
-                "SELECT quote, timestamp_s FROM mentions WHERE node_id=? "
-                "ORDER BY length(quote) DESC LIMIT 1",
+                "SELECT m.quote, m.timestamp_s, v.url AS video_url "
+                "FROM mentions m JOIN videos v ON v.id = m.video_id "
+                "WHERE m.node_id=? ORDER BY length(m.quote) DESC LIMIT 1",
                 (r["id"],),
             ).fetchone()
+            ts = quote_row["timestamp_s"] if quote_row else None
+            embed = (
+                media_embed(quote_row["video_url"] or "", ts)
+                if quote_row and ts is not None
+                else None
+            )
             facts.append(
                 {
                     "id": r["id"],
@@ -417,7 +425,8 @@ class Store:
                     "summary": r["summary"],
                     "relation": r["relation"],
                     "quote": quote_row["quote"] if quote_row else None,
-                    "timestamp_s": quote_row["timestamp_s"] if quote_row else None,
+                    "timestamp_s": ts,
+                    "embed": embed,
                 }
             )
         return facts
