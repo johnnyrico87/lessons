@@ -169,6 +169,16 @@ def enrich(
 @app.command()
 def serve(
     port: int = typer.Option(8787, "--port", help="Port to bind on 127.0.0.1."),
+    update_version_url: str = typer.Option(
+        "", "--update-version-url",
+        help="URL of version.json to poll for a newer graph (or set "
+        "LESSONS_UPDATE_VERSION_URL). Requires --update-bundle-url too.",
+    ),
+    update_bundle_url: str = typer.Option(
+        "", "--update-bundle-url",
+        help="URL of graph-bundle.json to fetch when a newer version is found "
+        "(or set LESSONS_UPDATE_BUNDLE_URL).",
+    ),
 ) -> None:
     """Pass C — serve the splash, situation-first search, and graph explorer on 127.0.0.1."""
     try:
@@ -181,6 +191,7 @@ def serve(
         )
         raise typer.Exit(code=1) from None
 
+    from lessons.reader import start_background_update
     from lessons.seed import seed_if_empty
     from lessons.store import Store
     from lessons.web import build_app
@@ -193,6 +204,27 @@ def serve(
             f"({seeded['nodes']} node(s), {seeded['edges']} edge(s))."
         )
     app_ = build_app(store)
+
+    # Best-effort background graph update — never blocks startup, never fatal.
+    # Starts only when an update channel is configured (flags or env).
+    def _log_update(outcome) -> None:
+        if outcome is None:
+            return
+        if outcome.changed:
+            typer.echo(
+                f"graph updated to content v{outcome.to_version} "
+                f"(was v{outcome.from_version})."
+            )
+        elif outcome.status == "error":
+            typer.secho(f"graph update skipped: {outcome.detail}", fg=typer.colors.YELLOW)
+        # 'up_to_date' / 'offline' stay quiet — nothing the user needs to see.
+
+    started = start_background_update(
+        _db_path(), update_version_url or None, update_bundle_url or None, on_done=_log_update
+    )
+    if started is not None:
+        typer.echo("checking for a newer graph in the background…")
+
     typer.echo(f"serving lessons on http://127.0.0.1:{port}  (Ctrl-C to stop)")
     # Always bind loopback explicitly — never 0.0.0.0 (R§5.1).
     uvicorn.run(app_, host="127.0.0.1", port=port, log_level="info")
