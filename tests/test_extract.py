@@ -392,3 +392,93 @@ def test_extractor_salvages_valid_nodes_from_mixed_output(store):
     assert r.chunks_invalid_skipped == 0
     ts = store.conn.execute("SELECT timestamp_s FROM mentions").fetchone()["timestamp_s"]
     assert ts == 10                    # clock-string coerced
+
+
+# --- run provenance fingerprint + skip-gate (schema v4) --------------------
+
+class ConfigurableLLM:
+    """A fake exposing the attributes RunFingerprint reads: model_name,
+    model_digest(), and sampling. Lets a test vary one facet of the
+    fingerprint and assert the skip-gate reacts."""
+
+    def __init__(self, model_name="fake-model", digest="d0", sampling=None):
+        self.model_name = model_name
+        self._digest = digest
+        self.sampling = sampling if sampling is not None else {"temperature": 0}
+
+    def model_digest(self):
+        return self._digest
+
+    def complete(self, prompt, transcript_chunk):
+        return _payload([{"type": "lesson", "label": "x", "quote": "q", "timestamp_s": 1}])
+
+
+def test_same_fingerprint_skips_on_rerun(store):
+    Extractor(store, ConfigurableLLM(digest="d0"), prompt_version="v1").extract(["v1"])
+    r2 = Extractor(store, ConfigurableLLM(digest="d0"), prompt_version="v1").extract(["v1"])
+    assert r2.videos_skipped_same_version == 1
+    assert r2.videos_processed == 0
+
+
+def test_changed_model_digest_reextracts_same_prompt_version(store):
+    # SAME prompt version, DIFFERENT model digest (a silent `ollama pull` under
+    # the same tag) must force re-extraction — the exact drift prompt_version
+    # gating alone could not catch.
+    Extractor(store, ConfigurableLLM(digest="d0"), prompt_version="v1").extract(["v1"])
+    r2 = Extractor(store, ConfigurableLLM(digest="d1"), prompt_version="v1").extract(["v1"])
+    assert r2.videos_processed == 1
+    assert r2.videos_skipped_same_version == 0
+
+
+def test_changed_sampling_reextracts(store):
+    Extractor(store, ConfigurableLLM(sampling={"temperature": 0}), prompt_version="v1").extract(
+        ["v1"]
+    )
+    r2 = Extractor(
+        store, ConfigurableLLM(sampling={"temperature": 0.7}), prompt_version="v1"
+    ).extract(["v1"])
+    assert r2.videos_processed == 1
+
+
+def test_run_row_records_full_fingerprint_and_telemetry(store):
+    ex = Extractor(store, ConfigurableLLM(digest="abc123"), prompt_version="v1")
+    ex.extract(["v1"])
+    row = store.conn.execute(
+        """SELECT prompt_version, model, model_digest, sampling, chunk_window_s,
+                  chunk_overlap_s, code_sha, fingerprint, finished_at, videos_processed, runtime_s
+           FROM extract_runs ORDER BY started_at DESC LIMIT 1"""
+    ).fetchone()
+    assert row["prompt_version"] == "v1"
+    assert row["model"] == "fake-model"
+    assert row["model_digest"] == "abc123"
+    assert row["sampling"] == '{"temperature": 0}'
+    assert row["chunk_window_s"] == 600
+    assert row["chunk_overlap_s"] == 60
+    assert row["code_sha"] and len(row["code_sha"]) == 16
+    assert row["fingerprint"] == ex.fp.fingerprint
+    assert row["finished_at"]                      # finalized, not left in-flight
+    assert row["videos_processed"] == 1
+    assert row["runtime_s"] is not None            # latency recorded
+
+
+def test_fingerprint_stable_for_identical_config():
+    from lessons.extract import RunFingerprint
+    a = RunFingerprint.compute(ConfigurableLLM(digest="d0"), "v1")
+    b = RunFingerprint.compute(ConfigurableLLM(digest="d0"), "v1")
+    assert a.fingerprint == b.fingerprint
+    # any facet changing flips the hash
+    assert a.fingerprint != RunFingerprint.compute(ConfigurableLLM(digest="d1"), "v1").fingerprint
+    assert a.fingerprint != RunFingerprint.compute(ConfigurableLLM(digest="d0"), "v2").fingerprint
+
+
+def test_pre_v4_meta_value_is_backcompat(store):
+    # A DB extracted before v4 stored the bare prompt_version under the meta key.
+    # On upgrade, a matching prompt_version must still count as done (don't
+    # needlessly re-run every old video just because the key shape changed).
+    store.conn.execute(
+        "INSERT OR REPLACE INTO meta(key, value) VALUES (?,?)", ("extracted:v1", "v1")
+    )
+    store.conn.commit()
+    r = Extractor(store, ConfigurableLLM(), prompt_version="v1").extract(["v1"])
+    assert r.videos_skipped_same_version == 1
+    assert r.videos_processed == 0

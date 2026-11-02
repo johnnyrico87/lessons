@@ -19,7 +19,9 @@ Key guarantees:
 
 from __future__ import annotations
 
+import hashlib
 import json
+import time
 import uuid
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -29,6 +31,11 @@ from lessons.extract_schema import ExtractionResult, parse_tolerant
 from lessons.store import Mention, Store
 
 PROMPT_VERSION = "v5"
+
+# Default chunking params — part of the run fingerprint, so changing them
+# forces re-extraction (a different window/overlap yields a different graph).
+CHUNK_WINDOW_S = 600
+CHUNK_OVERLAP_S = 60
 
 # The extraction prompt. Kept here (mirrors prompts/extract_v1.txt) so the
 # version string and the instruction travel together.
@@ -82,6 +89,84 @@ class LLMClient(Protocol):
     def complete(self, prompt: str, transcript_chunk: str) -> str: ...
 
 
+def _extractor_code_sha() -> str:
+    """A stable self-hash of the extraction LOGIC that shapes the graph: the
+    prompt text, the node/edge vocabularies, and the chunk defaults. An installed
+    package has no git SHA at runtime, so we hash the inputs that actually change
+    the output. Bumping PROMPT_VERSION changes the prompt and thus this hash;
+    editing the prompt body without bumping the version STILL changes it — which
+    is the point (silent prompt drift is caught)."""
+    from lessons.extract_schema import EDGE_RELATIONS, NODE_TYPES
+
+    material = "\x1f".join(
+        [
+            EXTRACT_PROMPT,
+            ",".join(sorted(NODE_TYPES)),
+            ",".join(sorted(EDGE_RELATIONS)),
+            f"window={CHUNK_WINDOW_S}",
+            f"overlap={CHUNK_OVERLAP_S}",
+        ]
+    )
+    return hashlib.sha256(material.encode("utf-8")).hexdigest()[:16]
+
+
+@dataclass
+class RunFingerprint:
+    """Everything that, if changed, should force re-extraction. The `fingerprint`
+    is a hash over the whole tuple; the skip-gate compares THAT, not just the
+    prompt version — so a new model digest, different sampling, or a changed
+    chunk window all correctly invalidate a prior extraction."""
+
+    prompt_version: str
+    model: str
+    model_digest: str
+    sampling: dict
+    chunk_window_s: int
+    chunk_overlap_s: int
+    code_sha: str
+
+    @classmethod
+    def compute(cls, llm: LLMClient, prompt_version: str) -> RunFingerprint:
+        model = getattr(llm, "model_name", "unknown")
+        digest_fn = getattr(llm, "model_digest", None)
+        model_digest = ""
+        if callable(digest_fn):
+            try:
+                model_digest = digest_fn() or ""
+            except Exception:
+                model_digest = ""
+        sampling = getattr(llm, "sampling", {}) or {}
+        return cls(
+            prompt_version=prompt_version,
+            model=model,
+            model_digest=model_digest,
+            sampling=dict(sampling),
+            chunk_window_s=CHUNK_WINDOW_S,
+            chunk_overlap_s=CHUNK_OVERLAP_S,
+            code_sha=_extractor_code_sha(),
+        )
+
+    @property
+    def sampling_json(self) -> str:
+        return json.dumps(self.sampling, sort_keys=True)
+
+    @property
+    def fingerprint(self) -> str:
+        """Stable sha256 over the whole tuple — the skip-gate's comparison key."""
+        material = "\x1f".join(
+            [
+                self.prompt_version,
+                self.model,
+                self.model_digest,
+                self.sampling_json,
+                str(self.chunk_window_s),
+                str(self.chunk_overlap_s),
+                self.code_sha,
+            ]
+        )
+        return hashlib.sha256(material.encode("utf-8")).hexdigest()
+
+
 # --- chunking --------------------------------------------------------------
 
 @dataclass
@@ -92,8 +177,8 @@ class Chunk:
 
 def chunk_transcript(
     lines: list[dict],
-    window_s: int = 600,
-    overlap_s: int = 60,
+    window_s: int = CHUNK_WINDOW_S,
+    overlap_s: int = CHUNK_OVERLAP_S,
 ) -> list[Chunk]:
     """Split timestamped transcript lines into overlapping time windows.
 
@@ -159,20 +244,33 @@ class Extractor:
         self.llm = llm
         self.prompt_version = prompt_version
         self.max_retries = max_retries
+        # The provenance fingerprint for THIS extractor configuration. Computed
+        # once (a model_digest lookup may hit the Ollama server) and reused as
+        # both the skip-gate key and the recorded run provenance.
+        self.fp = RunFingerprint.compute(llm, prompt_version)
 
     def _already_extracted(self, video_id: str) -> bool:
-        """A video is done at this prompt version if an extract_run at this
-        version is recorded for it (via meta key). Bumping the version re-does it.
-        """
+        """A video is done when the LAST extraction recorded for it used the
+        SAME fingerprint as this run. Any change — prompt version, model digest,
+        sampling, chunk window, or extractor code — yields a new fingerprint and
+        so re-extracts. The fingerprint is stored under a per-video meta key.
+
+        Back-compat: a DB written before v4 recorded only the bare
+        prompt_version under `extracted:<id>`. A stored value that equals this
+        run's prompt_version (not its fingerprint) is treated as a match so we
+        don't needlessly re-extract every pre-v4 video on first upgrade."""
         row = self.store.conn.execute(
             "SELECT value FROM meta WHERE key=?", (f"extracted:{video_id}",)
         ).fetchone()
-        return bool(row and row["value"] == self.prompt_version)
+        if not row:
+            return False
+        stored = row["value"]
+        return stored == self.fp.fingerprint or stored == self.prompt_version
 
     def _mark_extracted(self, video_id: str) -> None:
         self.store.conn.execute(
             "INSERT OR REPLACE INTO meta(key, value) VALUES (?,?)",
-            (f"extracted:{video_id}", self.prompt_version),
+            (f"extracted:{video_id}", self.fp.fingerprint),
         )
         self.store.conn.commit()
 
@@ -201,10 +299,25 @@ class Extractor:
         result = ExtractResult()
 
         run_id = _id()
+        started = time.monotonic()
+        fp = self.fp
         self.store.conn.execute(
-            "INSERT INTO extract_runs(id, prompt_version, model, started_at) VALUES (?,?,?,?)",
-            (run_id, self.prompt_version, getattr(self.llm, "model_name", "unknown"),
-             datetime.now(UTC).isoformat()),
+            """INSERT INTO extract_runs
+               (id, prompt_version, model, started_at, model_digest, sampling,
+                chunk_window_s, chunk_overlap_s, code_sha, fingerprint)
+               VALUES (?,?,?,?,?,?,?,?,?,?)""",
+            (
+                run_id,
+                fp.prompt_version,
+                fp.model,
+                datetime.now(UTC).isoformat(),
+                fp.model_digest,
+                fp.sampling_json,
+                fp.chunk_window_s,
+                fp.chunk_overlap_s,
+                fp.code_sha,
+                fp.fingerprint,
+            ),
         )
         self.store.conn.commit()
 
@@ -219,6 +332,18 @@ class Extractor:
             self._extract_one(vid, result)
             self._mark_extracted(vid)
             result.videos_processed += 1
+
+        # Finalize the run row with completion telemetry (latency + count).
+        self.store.conn.execute(
+            "UPDATE extract_runs SET finished_at=?, runtime_s=?, videos_processed=? WHERE id=?",
+            (
+                datetime.now(UTC).isoformat(),
+                round(time.monotonic() - started, 3),
+                result.videos_processed,
+                run_id,
+            ),
+        )
+        self.store.conn.commit()
 
         return result
 

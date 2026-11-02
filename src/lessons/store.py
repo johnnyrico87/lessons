@@ -84,6 +84,16 @@ class Store:
         for table, col, decl in [
             ("bios", "image_url", "TEXT"),
             ("bios", "image_license", "TEXT"),
+            # schema v4 — extract_runs provenance fingerprint
+            ("extract_runs", "model_digest", "TEXT"),
+            ("extract_runs", "sampling", "TEXT"),
+            ("extract_runs", "chunk_window_s", "INTEGER"),
+            ("extract_runs", "chunk_overlap_s", "INTEGER"),
+            ("extract_runs", "code_sha", "TEXT"),
+            ("extract_runs", "fingerprint", "TEXT"),
+            ("extract_runs", "finished_at", "TEXT"),
+            ("extract_runs", "videos_processed", "INTEGER"),
+            ("extract_runs", "runtime_s", "REAL"),
         ]:
             try:
                 self.conn.execute(f"ALTER TABLE {table} ADD COLUMN {col} {decl}")

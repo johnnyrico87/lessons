@@ -10,7 +10,7 @@ migration SQL when the shape changes.
 
 from __future__ import annotations
 
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 
 SCHEMA_SQL = """
 PRAGMA foreign_keys = ON;
@@ -90,7 +90,21 @@ CREATE TABLE IF NOT EXISTS extract_runs (
     id             TEXT PRIMARY KEY,
     prompt_version TEXT,
     model          TEXT,
-    started_at     TEXT
+    started_at     TEXT,
+    -- Provenance fingerprint (schema v4). A video is re-extracted when ANY of
+    -- these changes, not just prompt_version: the model's content digest, the
+    -- sampling params, the chunk window/overlap, and a self-hash of the
+    -- extractor code (prompt text + vocabularies + chunk defaults). fingerprint
+    -- is the stable hash OF the tuple below and is what the skip-gate compares.
+    model_digest   TEXT,   -- ollama content digest of the model tag (or '' if unknown)
+    sampling       TEXT,   -- JSON of sampling params, e.g. {"temperature": 0}
+    chunk_window_s  INTEGER,
+    chunk_overlap_s INTEGER,
+    code_sha       TEXT,   -- self-hash of the extractor's prompt + constants
+    fingerprint    TEXT,   -- sha256 over the whole provenance tuple (see RunFingerprint)
+    finished_at    TEXT,   -- set when the run completes (NULL = in-flight/aborted)
+    videos_processed INTEGER,
+    runtime_s      REAL    -- wall-clock of the whole run (latency telemetry)
 );
 
 CREATE TABLE IF NOT EXISTS meta (
