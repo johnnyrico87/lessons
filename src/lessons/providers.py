@@ -203,6 +203,30 @@ class OllamaClient:
                 "and run a local Ollama server"
             ) from e
         self.model_name = model
+        # Sampling params the fingerprint records. Kept as an attribute (not a
+        # literal in complete()) so the recorded provenance matches what ran.
+        self.sampling: dict = {"temperature": 0}
+
+    def model_digest(self) -> str:
+        """Ollama's content digest for the loaded model tag, used in the run
+        fingerprint so a silent model swap under the same tag forces re-extract.
+        Best-effort: returns '' if the server can't be reached or the shape
+        changes, so extraction never hard-fails on a telemetry lookup."""
+        try:
+            import ollama  # type: ignore
+
+            info = ollama.show(self.model_name)
+        except Exception:
+            return ""
+        # ollama.show() shape varies by client version; probe the usual spots.
+        for key in ("digest", "model_digest"):
+            val = info.get(key) if isinstance(info, dict) else getattr(info, key, None)
+            if val:
+                return str(val)
+        details = info.get("details") if isinstance(info, dict) else getattr(info, "details", None)
+        if isinstance(details, dict) and details.get("digest"):
+            return str(details["digest"])
+        return ""
 
     def complete(self, prompt: str, transcript_chunk: str) -> str:
         import ollama  # type: ignore
@@ -218,7 +242,7 @@ class OllamaClient:
             # Grammar-constrain output to our extraction schema (valid node types,
             # relations from our enum, required fields present) — not just "json".
             format=extraction_json_schema(),
-            options={"temperature": 0},
+            options=self.sampling,
         )
         return resp["message"]["content"]
 
