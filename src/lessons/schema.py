@@ -10,7 +10,7 @@ migration SQL when the shape changes.
 
 from __future__ import annotations
 
-SCHEMA_VERSION = 4
+SCHEMA_VERSION = 5
 
 SCHEMA_SQL = """
 PRAGMA foreign_keys = ON;
@@ -110,6 +110,22 @@ CREATE TABLE IF NOT EXISTS extract_runs (
 CREATE TABLE IF NOT EXISTS meta (
     key   TEXT PRIMARY KEY,
     value TEXT
+);
+
+CREATE TABLE IF NOT EXISTS node_decisions (   -- human entity-resolution decisions (schema v5)
+    -- Keyed by the entity SHAPE (type + normalized label), NOT a node id, so a
+    -- decision survives re-extraction: a re-created 'Gustav Leban' is matched by
+    -- the same key and the recorded fix re-applies. The release gate applies
+    -- these deterministically before publishing.
+    id            TEXT PRIMARY KEY,
+    node_type     TEXT NOT NULL,            -- the suspect node's type
+    norm_label    TEXT NOT NULL,            -- lower(trim(label)) it applies to
+    action        TEXT NOT NULL,            -- 'rename' | 'drop' | 'merge' | 'keep'
+    target_label  TEXT,                     -- rename: new label; merge: label to fold into
+    target_type   TEXT,                     -- merge: target node type (default = node_type)
+    reason        TEXT,
+    decided_at    TEXT,
+    UNIQUE(node_type, norm_label)
 );
 
 CREATE INDEX IF NOT EXISTS idx_mentions_node  ON mentions(node_id);

@@ -238,6 +238,11 @@ def publish(
         "--content-version",
         help="Explicit content version. Default (-1) bumps the stored counter by one.",
     ),
+    strict: bool = typer.Option(
+        False, "--strict",
+        help="Release gate: refuse to publish while un-reviewed entity suspects remain "
+        "(run 'lessons doctor --entities' to see them). Recommended before a PUBLIC bundle.",
+    ),
 ) -> None:
     """Publish the current graph as a versioned, integrity-checked bundle.
 
@@ -247,10 +252,14 @@ def publish(
       * graph-bundle.json  — the full bundle the app downloads and imports
       * version.json        — the tiny record the app polls to detect a newer graph
     Ships short cited quotes only, never audio or transcripts.
+
+    With --strict it first refuses if the graph has un-reviewed entity suspects,
+    so noise never reaches a public download.
     """
     import json
 
     from lessons.bundle import build_bundle, verify_bundle, version_info
+    from lessons.entities import undecided_suspects
     from lessons.store import Store
 
     store = Store(_db_path())
@@ -261,6 +270,18 @@ def publish(
                 fg=typer.colors.YELLOW, err=True,
             )
             raise typer.Exit(code=1) from None
+        if strict:
+            pending = undecided_suspects(store)
+            if pending:
+                typer.secho(
+                    f"--strict: {len(pending)} un-reviewed entity suspect(s) block this "
+                    f"publish. Run 'lessons doctor --entities', then 'lessons decide' each "
+                    f"(rename/drop/merge/keep) and 'lessons resolve'.",
+                    fg=typer.colors.RED, err=True,
+                )
+                for s in pending[:10]:
+                    typer.echo(f"  [{s.node_type}] {s.label} — {'; '.join(s.reasons)}", err=True)
+                raise typer.Exit(code=1) from None
         payload = store.export_seed()
         cv = content_version if content_version >= 0 else store.bump_content_version()
     finally:
@@ -329,6 +350,95 @@ def bundle_verify(
             json.dumps(version_info(manifest), indent=2, ensure_ascii=False), encoding="utf-8"
         )
         typer.echo(f"wrote {vpath}")
+
+
+@app.command()
+def doctor(
+    entities: bool = typer.Option(
+        False, "--entities", help="Audit entity nodes for suspects needing review."
+    ),
+) -> None:
+    """Read-only health audit. With --entities, flag suspect nodes (host-captured
+    people, non-entity labels, duplicates) for review before a public bundle.
+    Mutates nothing — it reports; you decide with 'lessons decide'."""
+    from lessons.entities import audit
+    from lessons.store import Store
+
+    if not entities:
+        typer.echo("nothing to check; pass --entities to audit entity nodes.")
+        raise typer.Exit(code=0)
+
+    store = Store(_db_path())
+    try:
+        suspects = audit(store)
+    finally:
+        store.close()
+    if not suspects:
+        typer.secho("no entity suspects — graph is clean.", fg=typer.colors.GREEN)
+        raise typer.Exit(code=0)
+
+    undecided = [s for s in suspects if s.decision is None]
+    typer.echo(f"{len(suspects)} suspect(s), {len(undecided)} un-reviewed:\n")
+    for s in suspects:
+        tag = f"[decided: {s.decision}]" if s.decision else "[NEEDS REVIEW]"
+        typer.echo(f"  {tag} [{s.node_type}] {s.label}")
+        for r in s.reasons:
+            typer.echo(f"        · {r}")
+    if undecided:
+        typer.echo(
+            "\nrecord a decision for each with:\n"
+            "  lessons decide <type> \"<label>\" rename --to \"<canonical>\"\n"
+            "  lessons decide <type> \"<label>\" drop\n"
+            "  lessons decide <type> \"<label>\" merge --to \"<other label>\"\n"
+            "  lessons decide <type> \"<label>\" keep\n"
+            "then apply with: lessons resolve"
+        )
+
+
+@app.command()
+def decide(
+    node_type: str = typer.Argument(..., help="Suspect node type (person/company/era/…)."),
+    label: str = typer.Argument(..., help="Suspect node label (as shown by doctor)."),
+    action: str = typer.Argument(..., help="rename | drop | merge | keep."),
+    to: str = typer.Option("", "--to", help="rename: new label; merge: label to fold into."),
+    to_type: str = typer.Option("", "--to-type", help="merge: target node type (default = type)."),
+    reason: str = typer.Option("", "--reason", help="Why (recorded for the audit trail)."),
+) -> None:
+    """Record a durable entity-resolution decision, keyed by (type, label) so it
+    survives re-extraction. Does NOT change the graph yet — run 'lessons resolve'."""
+    from lessons.entities import record_decision
+    from lessons.store import Store
+
+    store = Store(_db_path())
+    try:
+        record_decision(
+            store, node_type, label, action,
+            target_label=to or None, target_type=to_type or None, reason=reason or None,
+        )
+    except ValueError as e:
+        typer.secho(str(e), fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1) from None
+    finally:
+        store.close()
+    extra = f" -> {to}" if to else ""
+    typer.echo(f"recorded: [{node_type}] {label} => {action}{extra}  (run 'lessons resolve')")
+
+
+@app.command()
+def resolve() -> None:
+    """Apply all recorded entity decisions to the graph (transactional)."""
+    from lessons.entities import apply_decisions
+    from lessons.store import Store
+
+    store = Store(_db_path())
+    try:
+        r = apply_decisions(store)
+    finally:
+        store.close()
+    typer.echo(
+        f"applied: {r.renamed} renamed, {r.dropped} dropped, {r.merged} merged, "
+        f"{r.kept} kept; {r.missing} decision(s) had no matching node."
+    )
 
 
 if __name__ == "__main__":
