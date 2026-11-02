@@ -17,6 +17,8 @@ integrity hash is checked before anything is written.
 
 from __future__ import annotations
 
+import os
+import threading
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -24,6 +26,11 @@ from lessons.bundle import BundleError, load_bundle_text
 from lessons.store import Store
 
 _INSTALLED_KEY = "installed_content_version"
+
+# Env seam for the reader's update source (mirrors LESSONS_DATA_DIR). Unset =>
+# no background check runs, which is the correct default for a dev checkout.
+ENV_VERSION_URL = "LESSONS_UPDATE_VERSION_URL"
+ENV_BUNDLE_URL = "LESSONS_UPDATE_BUNDLE_URL"
 
 
 def installed_content_version(store: Store) -> int:
@@ -130,3 +137,59 @@ def check_and_update(
         return UpdateOutcome("offline", current, current, f"update check failed: {e}")
 
     return apply_bundle_text(store, text, first_run=False)
+
+
+def resolve_update_urls(
+    version_url: str | None = None, bundle_url: str | None = None
+) -> tuple[str, str] | None:
+    """Resolve the (version_url, bundle_url) pair from explicit args first, then
+    the env seam. Returns None when neither source provides BOTH — the signal to
+    skip the update check entirely (the correct default for a dev checkout or an
+    app shipped without an update channel)."""
+    v = version_url or os.environ.get(ENV_VERSION_URL, "")
+    b = bundle_url or os.environ.get(ENV_BUNDLE_URL, "")
+    if v and b:
+        return v, b
+    return None
+
+
+def start_background_update(
+    db_path: str | Path,
+    version_url: str | None = None,
+    bundle_url: str | None = None,
+    *,
+    on_done=None,
+) -> threading.Thread | None:
+    """Kick off a best-effort update check in a daemon thread and return it
+    (None when no update channel is configured, so nothing was started).
+
+    Non-blocking: the server starts immediately regardless. Non-fatal: any
+    failure is swallowed into an UpdateOutcome. The thread opens its OWN Store
+    connection on `db_path` (never the server's shared connection) so a graph
+    swap can't race in-flight request reads, and is a daemon so it never keeps
+    the process alive. `on_done(outcome)` is an optional callback (used by tests;
+    the CLI passes a logger)."""
+    urls = resolve_update_urls(version_url, bundle_url)
+    if urls is None:
+        return None
+    v_url, b_url = urls
+
+    def _run() -> None:
+        outcome = None
+        try:
+            s = Store(db_path)
+            try:
+                outcome = check_and_update(s, v_url, b_url)
+            finally:
+                s.close()
+        except Exception as e:  # a background check must NEVER crash the server
+            outcome = UpdateOutcome("error", 0, 0, f"background update crashed: {e}")
+        if on_done is not None:
+            try:
+                on_done(outcome)
+            except Exception:
+                pass
+
+    t = threading.Thread(target=_run, name="lessons-update", daemon=True)
+    t.start()
+    return t
