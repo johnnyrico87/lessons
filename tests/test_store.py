@@ -11,7 +11,9 @@ from lessons.citations import (
     ExternalCitation,
     PodcastCitation,
     UncitableNodeError,
+    media_embed,
     youtube_deep_link,
+    youtube_video_id,
 )
 from lessons.store import Mention, Store
 
@@ -133,6 +135,62 @@ def test_deep_link_timestamp(store):
 )
 def test_youtube_deep_link_forms(url, ts, expected):
     assert youtube_deep_link(url, ts) == expected
+
+
+# --- deep-link bug fix: non-YouTube urls no longer fabricate links ---------
+
+@pytest.mark.parametrize(
+    "mp3_url",
+    [
+        "https://pdst.fm/e/chrt.fm/track/XXX/pscrb.fm/rss/p/foo/episode-123.mp3",
+        "https://feeds.megaphone.fm/ATHLLC5883700320/audio.mp3",
+        "https://example.com/some/path/clip.mp3",
+    ],
+)
+def test_non_youtube_url_has_no_deep_link(mp3_url):
+    # Previously this fabricated youtu.be/<trailing-segment> — a dead link.
+    assert youtube_video_id(mp3_url) is None
+    assert youtube_deep_link(mp3_url, 60) is None
+
+
+def test_media_embed_youtube():
+    emb = media_embed("https://youtu.be/dQw4w9WgXcQ", 185)
+    assert emb["type"] == "youtube"
+    assert emb["video_id"] == "dQw4w9WgXcQ"
+    assert emb["src"] == (
+        "https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ?start=185&rel=0"
+    )
+    assert emb["start_s"] == 185
+
+
+def test_media_embed_audio_fallback():
+    mp3 = "https://feeds.megaphone.fm/ATHLLC/audio.mp3"
+    emb = media_embed(mp3, 42)
+    assert emb["type"] == "audio"
+    assert emb["src"] == mp3
+    assert emb["start_s"] == 42
+
+
+def test_media_embed_none_for_unplayable():
+    assert media_embed("", 0) is None
+    assert media_embed("ftp://nope/x", 0) is None
+
+
+def test_node_facts_carry_embed(store):
+    # A lesson tied to a person, both mentioned in a YouTube-origin video, gets
+    # a youtube embed descriptor on the fact for the drawer's click-to-play.
+    person = store.add_podcast_node(
+        "person", "Musashi", mentions=[Mention("SAMPLE0001", 10, "a swordsman")]
+    )
+    lesson = store.add_podcast_node(
+        "lesson", "The Five Rings", mentions=[Mention("SAMPLE0001", 185, "a quote")]
+    )
+    store.add_edge(person, lesson, "produced_lesson")
+    facts = store.node_facts(person)
+    lesson_fact = next(f for f in facts if f["label"] == "The Five Rings")
+    assert lesson_fact["embed"] is not None
+    assert lesson_fact["embed"]["type"] == "youtube"
+    assert lesson_fact["embed"]["start_s"] == 185
 
 
 # --- bios ------------------------------------------------------------------

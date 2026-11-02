@@ -76,10 +76,25 @@ def build_app(store: Store) -> FastAPI:
             f"SELECT id, type, label FROM nodes {where} LIMIT ?", params
         ).fetchall()
         ids = {r["id"] for r in node_rows}
+        # One pass for avatar images (person nodes carry a bio image when
+        # `enrich` has run); absent → the UI shows an initials fallback.
+        img_by_id = {
+            r["person_node_id"]: r["image_url"]
+            for r in store.conn.execute(
+                "SELECT person_node_id, image_url FROM bios WHERE image_url IS NOT NULL"
+            ).fetchall()
+        }
         elements = []
         for r in node_rows:
             elements.append(
-                {"data": {"id": r["id"], "label": r["label"], "ntype": r["type"]}}
+                {
+                    "data": {
+                        "id": r["id"],
+                        "label": r["label"],
+                        "ntype": r["type"],
+                        "image_url": img_by_id.get(r["id"]),
+                    }
+                }
             )
         # edges only between included (visible) nodes
         for e in store.conn.execute(

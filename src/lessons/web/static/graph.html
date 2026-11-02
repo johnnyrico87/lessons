@@ -38,7 +38,7 @@
   <div class="graph-wrap">
     <div id="cy"></div>
   </div>
-  <p class="graph-hint">The map shows people and companies. Click one to open its full detail — lessons, principles, situations, quotes, and who it connects to — in the right panel. Edge color: blue = relation, amber = tension.</p>
+  <p class="graph-hint">The map shows people and companies as portraits. Click a face to open its full detail — lessons, principles, situations, quotes, and who it connects to — in the right panel. Edge color: blue = relation, amber = tension.</p>
 
   <script>
   // Canvas shows ACTORS only (people + companies). Concepts live in the drawer.
@@ -49,13 +49,43 @@
   };
   let cy, activeType = "all";
 
+  function esc(s){return String(s||"").replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[m]));}
+
+  function initials(name){
+    return String(name||"").split(/\s+/).map(w=>w[0]).filter(Boolean).slice(0,2).join("").toUpperCase();
+  }
+
+  // Inline-SVG data URI avatar (initials on a type-colored disc). Used as the
+  // node image when a leader has no bio photo yet, so nodes always render as a
+  // proper face/badge rather than an empty circle.
+  function fallbackAvatar(label, ntype){
+    const bg = TYPE_COLOR[ntype] || "#9aa3b2";
+    const txt = initials(label) || "?";
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="96" height="96">`+
+      `<rect width="96" height="96" rx="48" fill="${bg}"/>`+
+      `<text x="50%" y="50%" dy=".35em" text-anchor="middle" `+
+      `font-family="-apple-system,Segoe UI,Roboto,sans-serif" font-size="38" `+
+      `font-weight="600" fill="#0f1115">${esc(txt)}</text></svg>`;
+    return "data:image/svg+xml;utf8," + encodeURIComponent(svg);
+  }
+
+  function nodeImage(n){
+    return n.data("image_url") || fallbackAvatar(n.data("label"), n.data("ntype"));
+  }
+
   function styleSheet() {
     return [
       { selector:"node", style:{
-        "background-color": (n)=>TYPE_COLOR[n.data("ntype")]||"#9aa3b2",
-        "label":"data(label)", "color":"#e7e9ee", "font-size":"10px",
-        "text-valign":"bottom","text-margin-y":"4px","width":28,"height":28,
-        "text-max-width":"90px","text-wrap":"ellipsis"
+        // Profile image fills the node; type color is the ring around it.
+        "background-image": (n)=>nodeImage(n),
+        "background-fit":"cover","background-clip":"node",
+        "background-color":"#1e222b",
+        "border-width":3,
+        "border-color": (n)=>TYPE_COLOR[n.data("ntype")]||"#9aa3b2",
+        "shape":"ellipse",
+        "label":"data(label)", "color":"#e7e9ee", "font-size":"11px",
+        "text-valign":"bottom","text-margin-y":"6px","width":48,"height":48,
+        "text-max-width":"100px","text-wrap":"ellipsis"
       }},
       { selector:"edge", style:{
         "width":1.5, "line-color":"#7aa2f7", "target-arrow-color":"#7aa2f7",
@@ -63,7 +93,7 @@
         "label":"data(relation)","font-size":"8px","color":"#9aa3b2","text-rotation":"autorotate"
       }},
       { selector:'edge[?tension]', style:{ "line-color":"#e0a458","target-arrow-color":"#e0a458" }},
-      { selector:"node:selected", style:{ "border-width":3,"border-color":"#e7e9ee" }}
+      { selector:"node:selected", style:{ "border-width":4,"border-color":"#e7e9ee" }}
     ];
   }
 
@@ -78,8 +108,6 @@
     });
     cy.on("tap","node", (e)=>{ if(window.LeaderCard) LeaderCard.open(e.target.id()); });
   }
-
-  function esc(s){return String(s||"").replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[m]));}
 
   function buildFilters(){
     const bar = document.getElementById("filters");

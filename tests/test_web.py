@@ -222,6 +222,24 @@ def test_graph_api_includes_person_and_company_actors(client):
     assert person and company
 
 
+def test_graph_api_node_payload_carries_image_url(client):
+    # Person nodes carry image_url on the graph payload so the canvas can render
+    # a profile photo; None when no bio image exists (UI shows initials avatar).
+    s = client._store
+    person = s.add_podcast_node(
+        "person", "Henry Ford",
+        mentions=[Mention("v1", 5, "Ford built the assembly line.")],
+    )
+    data = client.get("/api/graph").json()
+    ford = next(
+        e["data"] for e in data["elements"]
+        if e["data"].get("label") == "Henry Ford"
+    )
+    assert "image_url" in ford
+    assert ford["image_url"] is None  # no bio enriched yet
+    assert person
+
+
 def test_graph_api_filters_by_type(client):
     # An explicit type filter still lets you inspect one concept type on its own.
     data = client.get("/api/graph", params={"node_type": "situation"}).json()
