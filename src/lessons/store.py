@@ -556,6 +556,14 @@ class Store:
     def import_seed(self, seed: dict) -> dict:
         """Load a seed dict into THIS (empty) store. Idempotent per row via
         INSERT OR IGNORE, so re-importing is safe. Returns inserted counts."""
+        counts = self._import_seed_rows(seed)
+        self.conn.commit()
+        return counts
+
+    def _import_seed_rows(self, seed: dict) -> dict:
+        """The row inserts for import_seed, WITHOUT a commit — so replace_graph
+        can run it inside its own transaction. Never call this directly without
+        committing (or rolling back) around it."""
         c = self.conn
         counts = {"channels": 0, "videos": 0, "nodes": 0, "edges": 0,
                   "mentions": 0, "bios": 0}
@@ -604,7 +612,34 @@ class Store:
                  r.get("image_license"), r.get("fetched_at")),
             )
             counts["bios"] += 1
-        c.commit()
+        return counts
+
+    # Content tables a maintainer-owned bundle fully owns, child-first so FK
+    # deletes never dangle. (Transcripts/transcript_lines are never in a bundle —
+    # the reader has none — and extract_runs is maintainer-side telemetry.)
+    _BUNDLE_TABLES = ("bios", "mentions", "edges", "nodes", "videos", "channels")
+
+    def replace_graph(self, payload: dict) -> dict:
+        """Atomically REPLACE the graph with a bundle's payload — the update path.
+
+        Unlike import_seed (INSERT OR IGNORE, additive, for first-run seeding),
+        this wipes the maintainer-owned content tables and re-imports, so a row
+        that disappeared between content versions actually goes away and a
+        changed row reflects the new value. Wrapped in a single transaction: a
+        failed import rolls back, never leaving a half-swapped graph. User data
+        dirs hold nothing else to protect — the graph IS the shipped content."""
+        c = self.conn
+        try:
+            c.execute("BEGIN")
+            for t in self._BUNDLE_TABLES:
+                c.execute(f"DELETE FROM {t}")
+            # Reuse the (idempotent) seed importer inside this txn. On an empty
+            # set of tables its INSERT OR IGNORE behaves as a plain insert.
+            counts = self._import_seed_rows(payload)
+            c.execute("COMMIT")
+        except Exception:
+            c.execute("ROLLBACK")
+            raise
         return counts
 
     def is_empty(self) -> bool:
