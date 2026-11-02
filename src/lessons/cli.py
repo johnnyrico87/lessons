@@ -228,5 +228,65 @@ def seed_export(
     )
 
 
+@app.command()
+def publish(
+    out_dir: str = typer.Option(
+        "dist", "--out-dir", help="Directory to write graph-bundle.json + version.json into."
+    ),
+    content_version: int = typer.Option(
+        -1,
+        "--content-version",
+        help="Explicit content version. Default (-1) bumps the stored counter by one.",
+    ),
+) -> None:
+    """Publish the current graph as a versioned, integrity-checked bundle.
+
+    This is the maintainer's content-delivery step (the reader app consumes the
+    output): it exports the graph, stamps a monotonic content_version + a
+    SHA-256 integrity hash, and writes two files —
+      * graph-bundle.json  — the full bundle the app downloads and imports
+      * version.json        — the tiny record the app polls to detect a newer graph
+    Ships short cited quotes only, never audio or transcripts.
+    """
+    import json
+
+    from lessons.bundle import build_bundle, verify_bundle, version_info
+    from lessons.store import Store
+
+    store = Store(_db_path())
+    try:
+        if store.is_empty():
+            typer.secho(
+                "nothing to publish — the graph is empty (run ingest + extract first)",
+                fg=typer.colors.YELLOW, err=True,
+            )
+            raise typer.Exit(code=1) from None
+        payload = store.export_seed()
+        cv = content_version if content_version >= 0 else store.bump_content_version()
+    finally:
+        store.close()
+
+    bundle = build_bundle(payload, content_version=cv)
+    manifest = verify_bundle(bundle)  # fail loudly here, never ship an unverifiable file
+
+    out = Path(out_dir)
+    out.mkdir(parents=True, exist_ok=True)
+    bundle_path = out / "graph-bundle.json"
+    version_path = out / "version.json"
+    bundle_path.write_text(json.dumps(bundle, ensure_ascii=False), encoding="utf-8")
+    version_path.write_text(
+        json.dumps(version_info(manifest), indent=2, ensure_ascii=False), encoding="utf-8"
+    )
+    size_kb = bundle_path.stat().st_size / 1024
+    typer.echo(
+        f"published content v{manifest.content_version} "
+        f"(schema v{manifest.schema_version}, {manifest.counts.get('nodes', 0)} nodes, "
+        f"{manifest.counts.get('edges', 0)} edges, {size_kb:.1f} KB)\n"
+        f"  bundle:  {bundle_path}\n"
+        f"  version: {version_path}\n"
+        f"  sha256:  {manifest.payload_sha256[:16]}…"
+    )
+
+
 if __name__ == "__main__":
     app()

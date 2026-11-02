@@ -531,6 +531,28 @@ class Store:
             ),
         }
 
+    def content_version(self) -> int:
+        """The current published content version (0 if never published). Stored
+        in `meta`; the publish command bumps it so each exported bundle carries a
+        monotonic version the reader app compares against."""
+        row = self.conn.execute(
+            "SELECT value FROM meta WHERE key='content_version'"
+        ).fetchone()
+        try:
+            return int(row["value"]) if row else 0
+        except (TypeError, ValueError):
+            return 0
+
+    def bump_content_version(self) -> int:
+        """Increment and persist the content version, returning the new value."""
+        nxt = self.content_version() + 1
+        self.conn.execute(
+            "INSERT OR REPLACE INTO meta(key, value) VALUES ('content_version', ?)",
+            (str(nxt),),
+        )
+        self.conn.commit()
+        return nxt
+
     def import_seed(self, seed: dict) -> dict:
         """Load a seed dict into THIS (empty) store. Idempotent per row via
         INSERT OR IGNORE, so re-importing is safe. Returns inserted counts."""
