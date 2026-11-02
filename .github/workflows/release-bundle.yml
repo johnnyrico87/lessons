@@ -1,0 +1,65 @@
+name: release-bundle
+
+# Publishes the graph bundle as release assets.
+#
+# CI has NO graph of its own (data/ is gitignored by design), so it does NOT
+# generate the bundle — it VERIFIES a bundle the maintainer built locally with
+# `lessons publish` and attached to the release, then derives + attaches a
+# matching version.json. Integrity is a release GATE: a corrupt, tampered, or
+# too-new bundle fails the job and nothing is published.
+#
+# Flow:
+#   1. Locally:  lessons publish --out-dir dist   (uses your real DB)
+#   2. Create a GitHub Release and upload dist/graph-bundle.json as an asset
+#   3. Publishing the release triggers this workflow, which verifies it and
+#      attaches version.json alongside.
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: write   # needed to read + upload release assets
+
+jobs:
+  verify-and-publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install (dev extras — bundle verify needs no heavy pass deps)
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      - name: Download the attached bundle asset
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p dist
+          gh release download "${{ github.event.release.tag_name }}" \
+            --pattern "graph-bundle.json" --dir dist
+          test -s dist/graph-bundle.json || {
+            echo "::error::No graph-bundle.json attached to this release. Build it locally with 'lessons publish' and upload it before publishing the release."; exit 1; }
+
+      - name: Verify bundle (release gate) + derive version.json
+        run: |
+          lessons bundle-verify dist/graph-bundle.json --emit-version dist/version.json
+
+      - name: Attach version.json to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release upload "${{ github.event.release.tag_name }}" \
+            dist/version.json --clobber
+
+      - name: Summary
+        run: |
+          echo "### Published graph bundle" >> "$GITHUB_STEP_SUMMARY"
+          echo '```json' >> "$GITHUB_STEP_SUMMARY"
+          cat dist/version.json >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"

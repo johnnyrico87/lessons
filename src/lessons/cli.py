@@ -288,5 +288,48 @@ def publish(
     )
 
 
+@app.command("bundle-verify")
+def bundle_verify(
+    bundle: str = typer.Argument(..., help="Path to a graph-bundle.json to verify."),
+    emit_version: str = typer.Option(
+        "", "--emit-version",
+        help="Also write a derived version.json to this path (kept consistent "
+        "with the verified bundle's manifest).",
+    ),
+) -> None:
+    """Verify a graph bundle's integrity + version guards, and optionally emit a
+    version.json derived from it.
+
+    This is the release gate: it exits non-zero on a corrupt/tampered/too-new
+    bundle, so a CI release workflow can refuse to publish one. Deriving
+    version.json from the verified bundle (rather than trusting a separate file)
+    guarantees the two never drift."""
+    import json
+
+    from lessons.bundle import BundleError, load_bundle_text, version_info
+
+    path = Path(bundle)
+    if not path.exists():
+        typer.secho(f"bundle not found: {path}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=2) from None
+    try:
+        manifest, _payload = load_bundle_text(path.read_text(encoding="utf-8"))
+    except BundleError as e:
+        typer.secho(f"bundle REJECTED: {e}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1) from None
+
+    typer.echo(
+        f"bundle OK — content v{manifest.content_version}, schema v{manifest.schema_version}, "
+        f"{manifest.counts.get('nodes', 0)} nodes, {manifest.counts.get('edges', 0)} edges"
+    )
+    if emit_version:
+        vpath = Path(emit_version)
+        vpath.parent.mkdir(parents=True, exist_ok=True)
+        vpath.write_text(
+            json.dumps(version_info(manifest), indent=2, ensure_ascii=False), encoding="utf-8"
+        )
+        typer.echo(f"wrote {vpath}")
+
+
 if __name__ == "__main__":
     app()
